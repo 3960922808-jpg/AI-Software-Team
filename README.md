@@ -38,6 +38,11 @@ pnpm build:windows
 - API Key：仅保留在应用运行内存中，关闭程序即清除
 - 功能页面：项目工作台、智能调度中心、模型与 API、Agent 技能中心
 - 记忆与知识库：项目记忆、文档导入、本地检索与删除
+- 真实模型运行时：支持 OpenAI、Anthropic、Google AI、DeepSeek 和兼容 OpenAI 的服务
+- 两级 Agent 执行：指挥 Agent 规划和路由，专业子 Agent 使用授权 Skill 完成任务
+- 执行结果自动回写任务、调度事件和主界面最新交付区
+
+API Key 只存在 Electron 主进程内存中，不会写入任务数据、配置文件或 Git 仓库。
 
 `build-windows-exe.ps1` 是独立 `.exe` 构建脚本，需要在安装 Python 和 PyInstaller 的构建环境中执行。
 

@@ -27,7 +27,6 @@ const skillCatalog = [
   ["DO", "DevOps Agent", [["构建流水线", "配置可重复的构建与发布"], ["部署编排", "管理环境与版本交付"], ["运行监控", "建立日志、指标和告警"]]]
 ];
 let enabledSkills = new Set(skillCatalog.flatMap(([, , skills]) => skills.map(([, description]) => description)));
-let activeApiKey = "";
 const memoryStorageKey = "ai-software-team.memory";
 const knowledgeStorageKey = "ai-software-team.knowledge";
 let memories = JSON.parse(localStorage.getItem(memoryStorageKey) || "null") || [{ id: "m1", title: "MVP 技术边界", content: "首个版本优先验证项目管理、Agent 编排和技能授权流程。", type: "架构决策", createdAt: new Date().toISOString() }];
@@ -41,14 +40,22 @@ function render() {
     column.querySelector(".task-list").innerHTML = items.map((task) => {
       const previous = status === "progress" ? "todo" : status === "done" ? "progress" : null;
       const next = status === "todo" ? "progress" : status === "progress" ? "done" : null;
-      return `<article class="task"><h4>${escapeHtml(task.title)}</h4><p>${escapeHtml(task.description || "未填写任务说明")}</p><div class="task-footer"><span class="agent">${escapeHtml(task.agent)}</span><span class="priority ${task.priority}">${({high:"高",medium:"中",low:"低"})[task.priority]}</span></div><div class="task-actions">${previous ? `<button class="move-button" data-id="${task.id}" data-status="${previous}">← ${labels[previous]}</button>` : "<span></span>"}${next ? `<button class="move-button" data-id="${task.id}" data-status="${next}">${labels[next]} →</button>` : "<button class=\"move-button delete-button\" data-delete=\"${task.id}\">删除</button>"}</div></article>`;
+      return `<article class="task"><h4>${escapeHtml(task.title)}</h4><p>${escapeHtml(task.description || "未填写任务说明")}</p><div class="task-footer"><span class="agent">${escapeHtml(task.agent)}</span><span class="priority ${task.priority}">${({high:"高",medium:"中",low:"低"})[task.priority]}</span></div>${task.running ? "<span class=\"task-running\">模型正在执行</span>" : ""}${task.result ? `<div class="task-result">${escapeHtml(task.result)}</div>` : ""}<div class="task-actions">${previous ? `<button class="move-button" data-id="${task.id}" data-status="${previous}">← ${labels[previous]}</button>` : "<span></span>"}${next ? `<button class="move-button" data-id="${task.id}" data-status="${next}">${labels[next]} →</button>` : `<button class="move-button delete-button" data-delete="${task.id}">删除</button>`}</div></article>`;
     }).join("");
   });
   document.querySelector("#metric-todo").textContent = tasks.filter((task) => task.status === "todo").length;
   document.querySelector("#metric-progress").textContent = tasks.filter((task) => task.status === "progress").length;
   document.querySelector("#metric-done").textContent = tasks.filter((task) => task.status === "done").length;
   document.querySelector("#metric-high").textContent = tasks.filter((task) => task.priority === "high" && task.status !== "done").length;
-  document.querySelector("#task-total").textContent = `${tasks.length} 项任务`;
+  document.querySelector("#task-total").textContent = tasks.length;
+  const completed = tasks.filter((task) => task.status === "done").length;
+  const progress = tasks.length ? Math.round((completed / tasks.length) * 100) : 0;
+  document.querySelector("#project-progress").value = progress;
+  document.querySelector("#project-progress-label").textContent = `${progress}%`;
+  const activeAgents = new Set(tasks.filter((task) => task.status === "progress").map((task) => task.agent));
+  document.querySelector("#dashboard-agents").innerHTML = agents.slice(0, 6).map(([code, name]) => `<div class="dashboard-agent"><b>${code}</b><div><strong>${name}</strong><small>${activeAgents.has(name) ? "正在执行任务" : "可接受调度"}</small></div><span class="agent-presence ${activeAgents.has(name) ? "busy" : ""}"></span></div>`).join("");
+  const latest = tasks.find((task) => task.result);
+  document.querySelector("#latest-output").innerHTML = latest ? `<h3>${escapeHtml(latest.title)}</h3><p>${escapeHtml(latest.result)}</p>` : "<p>Agent 完成任务后，交付结果会显示在这里。</p>";
   renderOrchestrator();
 }
 function renderOrchestrator() {
@@ -90,6 +97,33 @@ function loadModelSettings() {
   document.querySelector("#routing-mode").value = settings.routingMode || "balanced";
   const state = document.querySelector("#connection-state"); state.textContent = "已在当前会话配置"; state.classList.add("connected");
 }
+function skillMap() { return Object.fromEntries(skillCatalog.map(([, agent, skills]) => [agent, skills.filter(([, description]) => enabledSkills.has(description)).map(([name]) => name)])); }
+function setRuntimeState(configured, label) {
+  const pill = document.querySelector("#runtime-pill"); pill.classList.toggle("connected", configured); pill.querySelector("span:last-child").textContent = label;
+  const state = document.querySelector("#connection-state"); state.classList.toggle("connected", configured); state.textContent = configured ? label : "未配置";
+}
+function getModelFormConfig() {
+  const form = document.querySelector("#model-settings-form"); const data = new FormData(form);
+  return { provider: data.get("provider"), baseUrl: data.get("baseUrl"), model: data.get("model"), apiKey: data.get("apiKey").trim(), routingMode: document.querySelector("#routing-mode").value };
+}
+async function configureRuntime(config) {
+  if (!window.desktop?.configureModel) throw new Error("真实模型执行仅在 Electron 桌面版中可用");
+  const result = await window.desktop.configureModel(config); setRuntimeState(true, `${result.model} 已连接`); return result;
+}
+async function executeNextTask(taskId) {
+  const task = taskId ? tasks.find((item) => item.id === taskId) : tasks.find((item) => item.status === "todo");
+  if (!task) { eventLog.unshift("没有可执行的待处理任务"); render(); return; }
+  if (!window.desktop?.executeAgentTask) { eventLog.unshift("请使用 Electron 桌面版运行真实 Agent"); render(); return; }
+  const button = document.querySelector("#run-queue-button"); button.disabled = true; button.textContent = "Agent 执行中";
+  tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "progress", running: true } : item); eventLog.unshift(`指挥 Agent 正在分析“${task.title}”`); saveTasks(); render();
+  try {
+    const response = await window.desktop.executeAgentTask({ task, skills: skillMap(), context: [...memories.map((item) => `${item.title}: ${item.content}`), ...knowledgeDocuments.map((item) => `${item.title}: ${item.content.slice(0, 600)}`)] });
+    tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "done", running: false, agent: response.delegateTo, plan: response.plan, result: response.result, completedAt: response.completedAt } : item);
+    eventLog.unshift(`${response.delegateTo} 已完成“${task.title}”`);
+  } catch (error) {
+    tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "todo", running: false, error: error.message } : item); eventLog.unshift(`执行失败：${error.message}`);
+  } finally { button.disabled = false; button.textContent = "AI 执行下一任务"; saveTasks(); render(); }
+}
 function escapeHtml(value) { const node = document.createElement("div"); node.textContent = value; return node.innerHTML; }
 document.querySelector("#board").addEventListener("click", (event) => {
   const { id, status, delete: deleteId } = event.target.dataset;
@@ -105,30 +139,24 @@ document.querySelector("#task-form").addEventListener("submit", (event) => {
   saveTasks(); render(); event.currentTarget.reset(); dialog.close();
 });
 document.querySelector("#reset-button").addEventListener("click", () => { tasks = sampleTasks; saveTasks(); render(); });
-document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => {
-  document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item === button));
-  document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === button.dataset.view));
-}));
-document.querySelector("#run-queue-button").addEventListener("click", () => {
-  const nextTask = tasks.find((task) => task.status === "todo");
-  if (!nextTask) { eventLog.unshift("没有可启动的待处理任务"); renderOrchestrator(); return; }
-  tasks = tasks.map((task) => task.id === nextTask.id ? { ...task, status: "progress" } : task);
-  eventLog.unshift(`${nextTask.agent} 已接收任务“${nextTask.title}”`); saveTasks(); render();
-});
+function activateView(name) { document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name)); document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === name)); }
+document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => activateView(button.dataset.view)));
+document.querySelectorAll("[data-open-view]").forEach((button) => button.addEventListener("click", () => activateView(button.dataset.openView)));
+document.querySelector("#run-queue-button").addEventListener("click", () => executeNextTask());
+document.querySelector("#quick-task-button").addEventListener("click", () => { const input = document.querySelector("#quick-task-input"); const title = input.value.trim(); if (!title) return; const task = { id: crypto.randomUUID(), title, description: "由研发指挥台快速创建", agent: "技术主管 Agent", priority: "high", status: "todo" }; tasks.unshift(task); input.value = ""; saveTasks(); render(); executeNextTask(task.id); });
 document.querySelector("#skills-grid").addEventListener("change", (event) => {
   const skill = event.target.dataset.skill;
   if (!skill) return;
   event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills();
 });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
-document.querySelector("#model-settings-form").addEventListener("submit", (event) => {
+document.querySelector("#model-settings-form").addEventListener("submit", async (event) => {
   event.preventDefault(); const data = new FormData(event.currentTarget);
-  activeApiKey = data.get("apiKey").trim();
-  sessionStorage.setItem("ai-software-team.model-settings", JSON.stringify({ provider: data.get("provider"), baseUrl: data.get("baseUrl"), model: data.get("model"), routingMode: document.querySelector("#routing-mode").value }));
-  const state = document.querySelector("#connection-state"); state.textContent = "已在当前会话配置"; state.classList.add("connected");
-  eventLog.unshift(`指挥 Agent 已更新 ${data.get("model")} 模型连接配置`); renderOrchestrator();
+  const config = getModelFormConfig();
+  try { await configureRuntime(config); sessionStorage.setItem("ai-software-team.model-settings", JSON.stringify({ provider: config.provider, baseUrl: config.baseUrl, model: config.model, routingMode: config.routingMode })); event.currentTarget.apiKey.value = ""; eventLog.unshift(`指挥 Agent 已连接 ${config.model}`); render(); } catch (error) { setRuntimeState(false, "模型待配置"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); }
 });
-document.querySelector("#clear-api-button").addEventListener("click", () => { activeApiKey = ""; sessionStorage.removeItem("ai-software-team.model-settings"); document.querySelector("#model-settings-form").reset(); applyProviderDefaults(); const state = document.querySelector("#connection-state"); state.textContent = "未配置"; state.classList.remove("connected"); });
+document.querySelector("#test-api-button").addEventListener("click", async () => { const button = document.querySelector("#test-api-button"); button.disabled = true; button.textContent = "测试中"; try { const config = getModelFormConfig(); if (config.apiKey) await configureRuntime(config); const result = await window.desktop.testModel(); setRuntimeState(true, `${config.model} 已连接`); eventLog.unshift(`连接测试成功：${result.message}`); } catch (error) { eventLog.unshift(`连接测试失败：${error.message}`); } finally { button.disabled = false; button.textContent = "测试连接"; renderOrchestrator(); } });
+document.querySelector("#clear-api-button").addEventListener("click", async () => { await window.desktop?.clearModel?.(); sessionStorage.removeItem("ai-software-team.model-settings"); document.querySelector("#model-settings-form").reset(); applyProviderDefaults(); setRuntimeState(false, "模型待配置"); });
 const memoryDialog = document.querySelector("#memory-dialog");
 document.querySelector("#new-memory-button").addEventListener("click", () => memoryDialog.showModal());
 document.querySelector("#memory-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); memories.unshift({ id: crypto.randomUUID(), title: data.get("title").trim(), content: data.get("content").trim(), type: data.get("type"), createdAt: new Date().toISOString() }); saveMemory(); renderMemory(); event.currentTarget.reset(); memoryDialog.close(); });
@@ -138,6 +166,7 @@ document.querySelector("#knowledge-search").addEventListener("input", (event) =>
 document.querySelector("#import-knowledge-button").addEventListener("click", () => document.querySelector("#knowledge-file-input").click());
 document.querySelector("#knowledge-file-input").addEventListener("change", async (event) => { for (const file of event.target.files) { knowledgeDocuments.unshift({ id: crypto.randomUUID(), title: file.name, content: await file.text(), type: file.name.split(".").pop().toUpperCase(), size: `${Math.max(1, Math.round(file.size / 1024))} KB` }); } saveMemory(); renderMemory(); event.target.value = ""; });
 loadModelSettings();
+window.desktop?.getModelStatus?.().then((status) => setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"));
 renderSkills();
 renderMemory();
 render();

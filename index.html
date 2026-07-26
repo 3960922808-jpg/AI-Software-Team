@@ -24,41 +24,24 @@
 
       <section class="workspace">
         <section class="view active" data-view-panel="projects">
-        <header class="topbar">
-          <div>
-            <p class="eyebrow">AI 项目经理</p>
-            <h1>项目工作台</h1>
-          </div>
-          <button class="primary-button" id="new-task-button" type="button">+ 新建任务</button>
-        </header>
-
-        <section class="brief-panel" aria-labelledby="brief-title">
-          <div class="brief-heading">
-            <div><p class="eyebrow">当前需求</p><h2 id="brief-title">AI Software Team 平台</h2></div>
-            <span class="badge">规划中</span>
-          </div>
-          <p>构建可协作的多 Agent 软件研发平台，从需求分析到部署交付形成可追踪的闭环。</p>
-          <div class="brief-meta"><span>负责人：AI 项目经理</span><span>目标：MVP v0.1</span><span id="task-total">0 项任务</span></div>
-        </section>
-
-        <section class="metrics" aria-label="项目概览">
-          <article><p>待处理</p><strong id="metric-todo">0</strong><small>需要分派或规划</small></article>
-          <article><p>进行中</p><strong id="metric-progress">0</strong><small>正在由 Agent 执行</small></article>
-          <article><p>已完成</p><strong id="metric-done">0</strong><small>可进入验收</small></article>
-          <article><p>高优先级</p><strong id="metric-high">0</strong><small>需要优先关注</small></article>
-        </section>
-
-        <section class="board-section" aria-labelledby="board-title">
-          <div class="section-heading"><div><p class="eyebrow">执行看板</p><h2 id="board-title">任务流</h2></div><button class="text-button" id="reset-button" type="button">恢复示例任务</button></div>
-          <div class="board" id="board">
-            <section class="column" data-status="todo"><header><h3>待处理</h3><span class="count">0</span></header><div class="task-list"></div></section>
-            <section class="column" data-status="progress"><header><h3>进行中</h3><span class="count">0</span></header><div class="task-list"></div></section>
-            <section class="column" data-status="done"><header><h3>已完成</h3><span class="count">0</span></header><div class="task-list"></div></section>
-          </div>
-        </section>
+          <header class="topbar command-topbar">
+            <div><p class="eyebrow">AI SOFTWARE TEAM / COMMAND CENTER</p><h1>研发指挥台</h1></div>
+            <div class="topbar-actions"><span class="runtime-pill" id="runtime-pill"><span class="status-dot"></span><span>模型待配置</span></span><button class="primary-button" id="new-task-button" type="button">新建任务</button></div>
+          </header>
+          <section class="project-focus" aria-labelledby="brief-title">
+            <div class="project-focus-main"><div class="project-kicker"><span>当前项目</span><span class="badge">MVP · 活跃</span></div><h2 id="brief-title">AI Software Team</h2><p>构建由指挥 Agent 统筹、专业子 Agent 协作的软件研发与交付系统。</p><div class="project-progress"><div><span>整体进度</span><strong id="project-progress-label">0%</strong></div><progress id="project-progress" max="100" value="0"></progress></div></div>
+            <div class="command-entry"><label for="quick-task-input">向团队下达任务</label><div><input id="quick-task-input" type="text" maxlength="120" placeholder="例如：为登录模块设计 API、数据库和测试方案" /><button class="primary-button" id="quick-task-button" type="button">创建并调度</button></div><small>指挥 Agent 将分析目标并选择合适的专业 Agent。</small></div>
+          </section>
+          <section class="metrics command-metrics" aria-label="项目概览">
+            <article><p>任务总数</p><strong id="task-total">0</strong><small>当前项目范围</small></article><article><p>待调度</p><strong id="metric-todo">0</strong><small>等待指挥 Agent</small></article><article><p>执行中</p><strong id="metric-progress">0</strong><small>专业 Agent 工作中</small></article><article><p>已交付</p><strong id="metric-done">0</strong><small>包含执行结果</small></article><span id="metric-high" hidden>0</span>
+          </section>
+          <section class="dashboard-layout">
+            <section class="board-section" aria-labelledby="board-title"><div class="section-heading"><div><p class="eyebrow">EXECUTION BOARD</p><h2 id="board-title">任务执行流</h2></div><button class="text-button" id="reset-button" type="button">恢复示例</button></div><div class="board" id="board"><section class="column" data-status="todo"><header><h3>待处理</h3><span class="count">0</span></header><div class="task-list"></div></section><section class="column" data-status="progress"><header><h3>执行中</h3><span class="count">0</span></header><div class="task-list"></div></section><section class="column" data-status="done"><header><h3>已完成</h3><span class="count">0</span></header><div class="task-list"></div></section></div></section>
+            <aside class="command-rail"><section><div class="section-heading"><div><p class="eyebrow">AGENT PULSE</p><h2>团队状态</h2></div><button class="text-button" type="button" data-open-view="orchestrator">查看调度</button></div><div id="dashboard-agents" class="dashboard-agents"></div></section><section><div class="section-heading"><div><p class="eyebrow">RECENT OUTPUT</p><h2>最新交付</h2></div></div><div id="latest-output" class="latest-output"></div></section></aside>
+          </section>
         </section>
         <section class="view" data-view-panel="orchestrator">
-          <header class="topbar"><div><p class="eyebrow">Agent Orchestrator</p><h1>智能调度中心</h1></div><button class="primary-button" id="run-queue-button" type="button">运行下一任务</button></header>
+          <header class="topbar"><div><p class="eyebrow">Agent Orchestrator</p><h1>智能调度中心</h1></div><button class="primary-button" id="run-queue-button" type="button">AI 执行下一任务</button></header>
           <section class="orchestrator-brief"><div><p class="eyebrow">调度状态</p><h2>任务路由已启用</h2><p>依据任务优先级、专业领域与 Agent 容量，将项目任务路由至合适的执行单元。</p></div><div class="orchestrator-state"><span class="status-dot"></span><strong id="orchestrator-status">等待任务</strong><small id="orchestrator-detail">队列由项目工作台同步</small></div></section>
           <section class="orchestrator-layout"><section class="queue-panel"><header class="panel-heading"><div><p class="eyebrow">任务队列</p><h2>待调度任务</h2></div><span class="count" id="queue-count">0</span></header><div id="execution-queue" class="execution-queue"></div></section><section class="agents-panel"><header class="panel-heading"><div><p class="eyebrow">注册中心</p><h2>专业 Agent</h2></div><span class="agent-total">8 在线</span></header><div id="agent-registry" class="agent-registry"></div></section></section>
           <section class="event-section"><div class="section-heading"><div><p class="eyebrow">执行记录</p><h2>调度事件</h2></div><span class="agent-total">实时</span></div><ol id="event-log" class="event-log"></ol></section>
@@ -74,7 +57,7 @@
             <form class="settings-form" id="model-settings-form">
               <div class="panel-heading"><div><p class="eyebrow">连接配置</p><h2>主模型</h2></div><span class="connection-state" id="connection-state">未配置</span></div>
               <div class="settings-fields"><label>模型提供商<select name="provider" id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google AI</option><option value="deepseek">DeepSeek</option><option value="custom">兼容 OpenAI 的自定义服务</option></select></label><label>API Base URL<input name="baseUrl" id="base-url" type="url" required placeholder="https://api.openai.com/v1" /></label><label>模型名称<input name="model" required placeholder="例如：gpt-4.1-mini" /></label><label>API Key<input name="apiKey" type="password" autocomplete="off" placeholder="仅保存在当前浏览器会话" /></label></div>
-              <div class="setting-actions"><button class="secondary-button" id="clear-api-button" type="button">清除会话密钥</button><button class="primary-button" type="submit">保存连接配置</button></div>
+              <div class="setting-actions"><button class="secondary-button" id="clear-api-button" type="button">清除会话密钥</button><button class="secondary-button" id="test-api-button" type="button">测试连接</button><button class="primary-button" type="submit">保存连接配置</button></div>
             </form>
             <section class="commander-panel"><header class="panel-heading"><div><p class="eyebrow">层级调度</p><h2>指挥 Agent</h2></div><span class="agent-total">已启用</span></header><div class="commander-content"><div class="commander-mark">CO</div><h3>总控编排 Agent</h3><p>分析目标、选择模型与子 Agent，合并执行结果并回传项目经理。</p><label>调度策略<select id="routing-mode"><option value="balanced">均衡分派</option><option value="quality">质量优先</option><option value="speed">速度优先</option></select></label><div class="delegation-map"><span>指挥 Agent</span><b>↓</b><span>专业子 Agent</span><b>↓</b><span>执行结果与审计</span></div></div></section>
           </section>
