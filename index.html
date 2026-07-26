@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Software Team | 项目工作台</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><span class="brand-mark">AI</span><span>Software Team</span></div>
+        <nav aria-label="主导航">
+          <button class="nav-item active" type="button"><span>▦</span>项目工作台</button>
+          <button class="nav-item" type="button" disabled><span>◎</span>Agent 编排</button>
+          <button class="nav-item" type="button" disabled><span>◈</span>记忆与知识库</button>
+          <button class="nav-item" type="button" disabled><span>⌘</span>技能中心</button>
+          <button class="nav-item" type="button" disabled><span>↗</span>交付与部署</button>
+        </nav>
+        <div class="sidebar-footer"><span class="status-dot"></span>项目经理 Agent 在线</div>
+      </aside>
+
+      <section class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">AI 项目经理</p>
+            <h1>项目工作台</h1>
+          </div>
+          <button class="primary-button" id="new-task-button" type="button">+ 新建任务</button>
+        </header>
+
+        <section class="brief-panel" aria-labelledby="brief-title">
+          <div class="brief-heading">
+            <div><p class="eyebrow">当前需求</p><h2 id="brief-title">AI Software Team 平台</h2></div>
+            <span class="badge">规划中</span>
+          </div>
+          <p>构建可协作的多 Agent 软件研发平台，从需求分析到部署交付形成可追踪的闭环。</p>
+          <div class="brief-meta"><span>负责人：AI 项目经理</span><span>目标：MVP v0.1</span><span id="task-total">0 项任务</span></div>
+        </section>
+
+        <section class="metrics" aria-label="项目概览">
+          <article><p>待处理</p><strong id="metric-todo">0</strong><small>需要分派或规划</small></article>
+          <article><p>进行中</p><strong id="metric-progress">0</strong><small>正在由 Agent 执行</small></article>
+          <article><p>已完成</p><strong id="metric-done">0</strong><small>可进入验收</small></article>
+          <article><p>高优先级</p><strong id="metric-high">0</strong><small>需要优先关注</small></article>
+        </section>
+
+        <section class="board-section" aria-labelledby="board-title">
+          <div class="section-heading"><div><p class="eyebrow">执行看板</p><h2 id="board-title">任务流</h2></div><button class="text-button" id="reset-button" type="button">恢复示例任务</button></div>
+          <div class="board" id="board">
+            <section class="column" data-status="todo"><header><h3>待处理</h3><span class="count">0</span></header><div class="task-list"></div></section>
+            <section class="column" data-status="progress"><header><h3>进行中</h3><span class="count">0</span></header><div class="task-list"></div></section>
+            <section class="column" data-status="done"><header><h3>已完成</h3><span class="count">0</span></header><div class="task-list"></div></section>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <dialog id="task-dialog">
+      <form id="task-form" method="dialog">
+        <div class="dialog-heading"><div><p class="eyebrow">项目任务</p><h2>新建任务</h2></div><button class="icon-button" value="cancel" aria-label="关闭">×</button></div>
+        <label>任务名称<input name="title" required maxlength="60" placeholder="例如：设计项目数据模型" /></label>
+        <label>任务说明<textarea name="description" maxlength="180" placeholder="描述期望的交付结果"></textarea></label>
+        <div class="form-row"><label>负责 Agent<select name="agent"><option>产品经理 Agent</option><option>架构师 Agent</option><option>技术主管 Agent</option><option>安全专家 Agent</option><option>前端 Agent</option><option>后端 Agent</option><option>测试 Agent</option><option>DevOps Agent</option></select></label><label>优先级<select name="priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></label></div>
+        <menu><button class="secondary-button" value="cancel">取消</button><button class="primary-button" value="default">创建任务</button></menu>
+      </form>
+    </dialog>
+    <script src="app.js"></script>
+  </body>
+</html>
