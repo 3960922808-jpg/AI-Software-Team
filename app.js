@@ -28,6 +28,10 @@ const skillCatalog = [
 ];
 let enabledSkills = new Set(skillCatalog.flatMap(([, , skills]) => skills.map(([, description]) => description)));
 let activeApiKey = "";
+const memoryStorageKey = "ai-software-team.memory";
+const knowledgeStorageKey = "ai-software-team.knowledge";
+let memories = JSON.parse(localStorage.getItem(memoryStorageKey) || "null") || [{ id: "m1", title: "MVP 技术边界", content: "首个版本优先验证项目管理、Agent 编排和技能授权流程。", type: "架构决策", createdAt: new Date().toISOString() }];
+let knowledgeDocuments = JSON.parse(localStorage.getItem(knowledgeStorageKey) || "null") || [{ id: "k1", title: "AI Software Team 架构说明", content: "指挥 Agent 负责拆解和路由任务，专业子 Agent 使用经过授权的 Skill 执行工作。", type: "内置文档", size: "1 KB" }];
 function saveTasks() { localStorage.setItem(storageKey, JSON.stringify(tasks)); }
 function render() {
   document.querySelectorAll(".column").forEach((column) => {
@@ -60,6 +64,17 @@ function renderOrchestrator() {
 function renderSkills() {
   document.querySelector("#skills-summary").textContent = `${enabledSkills.size} 项技能已启用`;
   document.querySelector("#skills-grid").innerHTML = skillCatalog.map(([code, agent, skills]) => `<article class="skill-card"><header class="skill-card-header"><div class="skill-owner"><b>${code}</b><h2>${agent}</h2></div><span class="skill-count">${skills.length} 项专属技能</span></header><ul class="skill-list">${skills.map(([name, description]) => `<li><div><strong>${name}</strong><small>${description}</small></div><input class="skill-toggle" type="checkbox" data-skill="${escapeHtml(description)}" aria-label="切换 ${name}" ${enabledSkills.has(description) ? "checked" : ""} /></li>`).join("")}</ul></article>`).join("");
+}
+function saveMemory() { localStorage.setItem(memoryStorageKey, JSON.stringify(memories)); localStorage.setItem(knowledgeStorageKey, JSON.stringify(knowledgeDocuments)); }
+function renderMemory(query = "") {
+  const normalized = query.trim().toLowerCase();
+  const documents = knowledgeDocuments.filter((document) => `${document.title} ${document.content}`.toLowerCase().includes(normalized));
+  document.querySelector("#short-memory-count").textContent = tasks.filter((task) => task.status === "progress").length;
+  document.querySelector("#project-memory-count").textContent = memories.length;
+  document.querySelector("#knowledge-document-count").textContent = knowledgeDocuments.length;
+  document.querySelector("#memory-count").textContent = memories.length;
+  document.querySelector("#memory-list").innerHTML = memories.length ? memories.map((memory) => `<article class="memory-item"><header><h3>${escapeHtml(memory.title)}</h3><button class="memory-delete" data-memory-delete="${memory.id}" type="button">删除</button></header><p>${escapeHtml(memory.content)}</p><span class="memory-type">${escapeHtml(memory.type)}</span></article>`).join("") : "<p class=\"memory-empty\">暂无项目记忆</p>";
+  document.querySelector("#knowledge-list").innerHTML = documents.length ? documents.map((document) => `<article class="knowledge-item"><header><h3>${escapeHtml(document.title)}</h3><button class="memory-delete" data-knowledge-delete="${document.id}" type="button">删除</button></header><p>${escapeHtml(document.content.slice(0, 180))}${document.content.length > 180 ? "…" : ""}</p><div class="document-meta"><span class="document-type">${escapeHtml(document.type)}</span> · ${escapeHtml(document.size)}</div></article>`).join("") : "<p class=\"memory-empty\">没有匹配的知识文档</p>";
 }
 function applyProviderDefaults() {
   const provider = document.querySelector("#provider-select").value;
@@ -114,6 +129,15 @@ document.querySelector("#model-settings-form").addEventListener("submit", (event
   eventLog.unshift(`指挥 Agent 已更新 ${data.get("model")} 模型连接配置`); renderOrchestrator();
 });
 document.querySelector("#clear-api-button").addEventListener("click", () => { activeApiKey = ""; sessionStorage.removeItem("ai-software-team.model-settings"); document.querySelector("#model-settings-form").reset(); applyProviderDefaults(); const state = document.querySelector("#connection-state"); state.textContent = "未配置"; state.classList.remove("connected"); });
+const memoryDialog = document.querySelector("#memory-dialog");
+document.querySelector("#new-memory-button").addEventListener("click", () => memoryDialog.showModal());
+document.querySelector("#memory-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); memories.unshift({ id: crypto.randomUUID(), title: data.get("title").trim(), content: data.get("content").trim(), type: data.get("type"), createdAt: new Date().toISOString() }); saveMemory(); renderMemory(); event.currentTarget.reset(); memoryDialog.close(); });
+document.querySelector("#memory-list").addEventListener("click", (event) => { const id = event.target.dataset.memoryDelete; if (!id) return; memories = memories.filter((memory) => memory.id !== id); saveMemory(); renderMemory(); });
+document.querySelector("#knowledge-list").addEventListener("click", (event) => { const id = event.target.dataset.knowledgeDelete; if (!id) return; knowledgeDocuments = knowledgeDocuments.filter((document) => document.id !== id); saveMemory(); renderMemory(document.querySelector("#knowledge-search").value); });
+document.querySelector("#knowledge-search").addEventListener("input", (event) => renderMemory(event.target.value));
+document.querySelector("#import-knowledge-button").addEventListener("click", () => document.querySelector("#knowledge-file-input").click());
+document.querySelector("#knowledge-file-input").addEventListener("change", async (event) => { for (const file of event.target.files) { knowledgeDocuments.unshift({ id: crypto.randomUUID(), title: file.name, content: await file.text(), type: file.name.split(".").pop().toUpperCase(), size: `${Math.max(1, Math.round(file.size / 1024))} KB` }); } saveMemory(); renderMemory(); event.target.value = ""; });
 loadModelSettings();
 renderSkills();
+renderMemory();
 render();

@@ -4,3 +4,6 @@ node_modules/
 .env.*
 __pycache__/
 *.py[cod]
+release/
+release-v*/
+dist/

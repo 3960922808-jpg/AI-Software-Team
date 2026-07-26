@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src https:;" />
     <title>AI Software Team | 项目工作台</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -13,6 +14,7 @@
         <nav aria-label="主导航">
           <button class="nav-item active" type="button" data-view="projects"><span>▦</span>项目工作台</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
+          <button class="nav-item" type="button" data-view="memory"><span>◇</span>记忆与知识库</button>
           <button class="nav-item" type="button" data-view="settings"><span>◈</span>模型与 API</button>
           <button class="nav-item" type="button" data-view="skills"><span>⌘</span>技能中心</button>
           <button class="nav-item" type="button" disabled><span>↗</span>交付与部署</button>
@@ -61,6 +63,11 @@
           <section class="orchestrator-layout"><section class="queue-panel"><header class="panel-heading"><div><p class="eyebrow">任务队列</p><h2>待调度任务</h2></div><span class="count" id="queue-count">0</span></header><div id="execution-queue" class="execution-queue"></div></section><section class="agents-panel"><header class="panel-heading"><div><p class="eyebrow">注册中心</p><h2>专业 Agent</h2></div><span class="agent-total">8 在线</span></header><div id="agent-registry" class="agent-registry"></div></section></section>
           <section class="event-section"><div class="section-heading"><div><p class="eyebrow">执行记录</p><h2>调度事件</h2></div><span class="agent-total">实时</span></div><ol id="event-log" class="event-log"></ol></section>
         </section>
+        <section class="view" data-view-panel="memory">
+          <header class="topbar"><div><p class="eyebrow">Memory System</p><h1>记忆与知识库</h1></div><div class="header-actions"><input id="knowledge-file-input" type="file" accept=".txt,.md,.json,.csv" multiple hidden /><button class="secondary-button" id="import-knowledge-button" type="button">导入文档</button><button class="primary-button" id="new-memory-button" type="button">添加记忆</button></div></header>
+          <section class="memory-metrics"><article><p>短期记忆</p><strong id="short-memory-count">0</strong><small>当前任务上下文</small></article><article><p>项目记忆</p><strong id="project-memory-count">0</strong><small>决策与经验记录</small></article><article><p>知识文档</p><strong id="knowledge-document-count">0</strong><small>可检索资料</small></article><article><p>检索状态</p><strong class="memory-ready">就绪</strong><small>本地全文检索</small></article></section>
+          <section class="memory-layout"><section class="memory-panel"><header class="panel-heading"><div><p class="eyebrow">Project Memory</p><h2>项目记忆</h2></div><span class="count" id="memory-count">0</span></header><div id="memory-list" class="memory-list"></div></section><section class="knowledge-panel"><header class="panel-heading"><div><p class="eyebrow">Knowledge Base</p><h2>知识文档</h2></div><input class="knowledge-search" id="knowledge-search" type="search" placeholder="搜索标题或内容" /></header><div id="knowledge-list" class="knowledge-list"></div></section></section>
+        </section>
         <section class="view" data-view-panel="settings">
           <header class="topbar"><div><p class="eyebrow">Model Layer</p><h1>模型与 API 配置</h1></div><span class="session-label">仅当前会话</span></header>
           <section class="settings-layout">
@@ -89,6 +96,9 @@
         <div class="form-row"><label>负责 Agent<select name="agent"><option>产品经理 Agent</option><option>架构师 Agent</option><option>技术主管 Agent</option><option>安全专家 Agent</option><option>前端 Agent</option><option>后端 Agent</option><option>测试 Agent</option><option>DevOps Agent</option></select></label><label>优先级<select name="priority"><option value="high">高</option><option value="medium" selected>中</option><option value="low">低</option></select></label></div>
         <menu><button class="secondary-button" value="cancel">取消</button><button class="primary-button" value="default">创建任务</button></menu>
       </form>
+    </dialog>
+    <dialog id="memory-dialog">
+      <form id="memory-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">Project Memory</p><h2>添加项目记忆</h2></div><button class="icon-button" value="cancel" aria-label="关闭">×</button></div><label>标题<input name="title" required maxlength="60" placeholder="例如：数据库选型决策" /></label><label>内容<textarea name="content" required maxlength="1000" placeholder="记录决策、约束、经验或需要长期保留的上下文"></textarea></label><label>类型<select name="type"><option>架构决策</option><option>产品约束</option><option>用户偏好</option><option>经验总结</option><option>其他</option></select></label><menu><button class="secondary-button" value="cancel">取消</button><button class="primary-button" value="default">保存记忆</button></menu></form>
     </dialog>
     <script src="app.js"></script>
   </body>

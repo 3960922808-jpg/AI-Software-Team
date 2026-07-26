@@ -13,13 +13,31 @@
 - 主模型的提供商、Base URL、模型名称和会话级 API Key 配置
 - 指挥 Agent 的调度策略，以及 9 个 Agent 的专属 Skill 开关
 
-## Windows 桌面版
+## Electron Windows 桌面版
 
-双击 `start-windows-app.cmd` 即可启动原生 Windows 窗口应用。它使用 Windows 自带的 PowerShell/WPF，不需要浏览器、Node.js 或 Python。
+正式桌面版基于 Electron。开发运行：
+
+```powershell
+pnpm install
+pnpm start
+```
+
+构建 Windows 安装包和便携版：
+
+```powershell
+pnpm build:windows
+```
+
+构建结果输出到版本化的 `release-v*/` 目录。
+
+## WPF 兼容启动器
+
+双击 `start-windows-app.cmd` 可启动 PowerShell/WPF 兼容客户端。正式发布版本使用 Electron 安装包。
 
 - 本地任务数据：`%APPDATA%\AI Software Team\workspace.json`
 - API Key：仅保留在应用运行内存中，关闭程序即清除
 - 功能页面：项目工作台、智能调度中心、模型与 API、Agent 技能中心
+- 记忆与知识库：项目记忆、文档导入、本地检索与删除
 
 `build-windows-exe.ps1` 是独立 `.exe` 构建脚本，需要在安装 Python 和 PyInstaller 的构建环境中执行。
 
