@@ -1,0 +1,52 @@
+const assert = require("assert");
+const fs = require("fs");
+const http = require("http");
+const os = require("os");
+const path = require("path");
+const runtime = require("../electron/model-runtime");
+
+function responseFor(system) {
+  if (system.includes("拆成 1-6 个")) return JSON.stringify({ goal: "交付可运行模块", subtasks: [
+    { title: "实现模块", delegateTo: "后端 Agent", instructions: "生成实现文件", dependsOn: [] },
+    { title: "测试模块", delegateTo: "测试 Agent", instructions: "生成测试文件", dependsOn: [0] }
+  ] });
+  if (system.includes("后端工程师")) return JSON.stringify({ summary: "实现完成", artifacts: [{ path: "src/service.js", content: "module.exports = () => 'ok';\n" }], checks: ["node -e 验证导出"] });
+  if (system.includes("测试工程师")) return JSON.stringify({ summary: "测试完成", artifacts: [{ path: "test/service.test.js", content: "// integration fixture\n" }], checks: ["node --test"] });
+  if (system.includes("审查所有子 Agent")) return "# 验收结果\n两个专业 Agent 均已交付文件。";
+  if (system.includes("项目经理灵灵")) return JSON.stringify({ reply: "可以创建并执行。", action: { type: "create_and_execute", title: "实现模块", description: "交付并测试", priority: "high", agent: "后端 Agent" } });
+  return "连接成功";
+}
+
+async function main() {
+  const server = http.createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => { body += chunk; });
+    request.on("end", () => {
+      const payload = JSON.parse(body);
+      const system = payload.messages?.[0]?.content || "";
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ choices: [{ message: { content: responseFor(system) } }] }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const tempWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-v08-"));
+  try {
+    runtime.configure({ provider: "custom", baseUrl: `http://127.0.0.1:${server.address().port}/v1`, model: "mock-team", apiKey: "test-only" });
+    runtime.setWorkspace(tempWorkspace);
+    const result = await runtime.executeTask({ task: { id: "task-test", title: "实现并测试模块", priority: "high", agent: "技术主管 Agent" }, skills: { "后端 Agent": ["API 设计"], "测试 Agent": ["自动化测试"] }, context: [] });
+    assert.equal(result.runs.length, 2);
+    assert.equal(result.runs[0].delegateTo, "后端 Agent");
+    assert.equal(result.runs[1].dependsOn[0], 0);
+    assert.equal(result.runs.flatMap((run) => run.artifacts).length, 2);
+    for (const artifact of result.runs.flatMap((run) => run.artifacts)) assert.ok(fs.existsSync(artifact.absolutePath));
+    assert.match(result.result, /验收结果/);
+    const chat = await runtime.chat({ messages: [{ role: "user", content: "帮我实现并执行" }] });
+    assert.equal(chat.action.type, "create_and_execute");
+    console.log("PASS main Agent -> 2 child Agents -> 2 artifacts -> final review -> chat action");
+  } finally {
+    server.close();
+    fs.rmSync(tempWorkspace, { recursive: true, force: true });
+  }
+}
+
+main().catch((error) => { console.error(error); process.exitCode = 1; });

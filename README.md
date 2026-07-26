@@ -1,6 +1,6 @@
 # AI Software Team
 
-基于多 Agent 协作的软件研发平台。当前已完成前三个板块：**AI 项目经理工作台**、**Agent Orchestrator（智能调度中心）** 与 **模型/API 配置及技能中心**。
+基于 Electron 的 Windows 多 Agent 软件研发工作台。
 
 ## 当前功能
 
@@ -11,7 +11,10 @@
 - Agent 注册表、任务执行队列与调度事件记录
 - 项目任务与调度中心实时联动，支持一键启动下一项待处理任务
 - 主模型的提供商、Base URL、模型名称和会话级 API Key 配置
-- 指挥 Agent 的调度策略，以及 9 个 Agent 的专属 Skill 开关
+- 指挥 Agent 的调度策略，以及 10 个专业 Agent 的专属 Skill 开关
+- 主 Agent 真实拆解 1-6 个子任务，多专业 Agent 按各自 Skill 执行，主 Agent 最终审查汇总
+- 可选本地工作目录，生成文件安全写入 `.ai-team-output`，不会覆盖原项目
+- 灵灵 AI 对话可创建任务或直接启动多 Agent 执行
 
 ## Electron Windows 桌面版
 
@@ -22,7 +25,7 @@ pnpm install
 pnpm start
 ```
 
-构建 Windows 安装包和便携版：
+构建 Windows 安装包和 ZIP 免安装版：
 
 ```powershell
 pnpm build:windows
@@ -39,7 +42,7 @@ pnpm build:windows
 - 功能页面：项目工作台、智能调度中心、模型与 API、Agent 技能中心
 - 记忆与知识库：项目记忆、文档导入、本地检索与删除
 - 真实模型运行时：支持 OpenAI、Anthropic、Google AI、DeepSeek 和兼容 OpenAI 的服务
-- 两级 Agent 执行：指挥 Agent 规划和路由，专业子 Agent 使用授权 Skill 完成任务
+- 多级 Agent 执行：主 Agent 拆解和分派，多个专业子 Agent 使用授权 Skill 完成任务，最后统一验收
 - 执行结果自动回写任务、调度事件和主界面最新交付区
 - 宠物 Agent 工作室：四组办公桌、角色工作动画和经理灵灵巡查动画
 - Agent 右键菜单：当前任务进度、编辑角色和删除角色
