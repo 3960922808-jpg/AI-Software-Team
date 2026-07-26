@@ -13,8 +13,8 @@
         <nav aria-label="主导航">
           <button class="nav-item active" type="button" data-view="projects"><span>▦</span>项目工作台</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
-          <button class="nav-item" type="button" disabled><span>◈</span>记忆与知识库</button>
-          <button class="nav-item" type="button" disabled><span>⌘</span>技能中心</button>
+          <button class="nav-item" type="button" data-view="settings"><span>◈</span>模型与 API</button>
+          <button class="nav-item" type="button" data-view="skills"><span>⌘</span>技能中心</button>
           <button class="nav-item" type="button" disabled><span>↗</span>交付与部署</button>
         </nav>
         <div class="sidebar-footer"><span class="status-dot"></span>项目经理 Agent 在线</div>
@@ -60,6 +60,23 @@
           <section class="orchestrator-brief"><div><p class="eyebrow">调度状态</p><h2>任务路由已启用</h2><p>依据任务优先级、专业领域与 Agent 容量，将项目任务路由至合适的执行单元。</p></div><div class="orchestrator-state"><span class="status-dot"></span><strong id="orchestrator-status">等待任务</strong><small id="orchestrator-detail">队列由项目工作台同步</small></div></section>
           <section class="orchestrator-layout"><section class="queue-panel"><header class="panel-heading"><div><p class="eyebrow">任务队列</p><h2>待调度任务</h2></div><span class="count" id="queue-count">0</span></header><div id="execution-queue" class="execution-queue"></div></section><section class="agents-panel"><header class="panel-heading"><div><p class="eyebrow">注册中心</p><h2>专业 Agent</h2></div><span class="agent-total">8 在线</span></header><div id="agent-registry" class="agent-registry"></div></section></section>
           <section class="event-section"><div class="section-heading"><div><p class="eyebrow">执行记录</p><h2>调度事件</h2></div><span class="agent-total">实时</span></div><ol id="event-log" class="event-log"></ol></section>
+        </section>
+        <section class="view" data-view-panel="settings">
+          <header class="topbar"><div><p class="eyebrow">Model Layer</p><h1>模型与 API 配置</h1></div><span class="session-label">仅当前会话</span></header>
+          <section class="settings-layout">
+            <form class="settings-form" id="model-settings-form">
+              <div class="panel-heading"><div><p class="eyebrow">连接配置</p><h2>主模型</h2></div><span class="connection-state" id="connection-state">未配置</span></div>
+              <div class="settings-fields"><label>模型提供商<select name="provider" id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google AI</option><option value="deepseek">DeepSeek</option><option value="custom">兼容 OpenAI 的自定义服务</option></select></label><label>API Base URL<input name="baseUrl" id="base-url" type="url" required placeholder="https://api.openai.com/v1" /></label><label>模型名称<input name="model" required placeholder="例如：gpt-4.1-mini" /></label><label>API Key<input name="apiKey" type="password" autocomplete="off" placeholder="仅保存在当前浏览器会话" /></label></div>
+              <div class="setting-actions"><button class="secondary-button" id="clear-api-button" type="button">清除会话密钥</button><button class="primary-button" type="submit">保存连接配置</button></div>
+            </form>
+            <section class="commander-panel"><header class="panel-heading"><div><p class="eyebrow">层级调度</p><h2>指挥 Agent</h2></div><span class="agent-total">已启用</span></header><div class="commander-content"><div class="commander-mark">CO</div><h3>总控编排 Agent</h3><p>分析目标、选择模型与子 Agent，合并执行结果并回传项目经理。</p><label>调度策略<select id="routing-mode"><option value="balanced">均衡分派</option><option value="quality">质量优先</option><option value="speed">速度优先</option></select></label><div class="delegation-map"><span>指挥 Agent</span><b>↓</b><span>专业子 Agent</span><b>↓</b><span>执行结果与审计</span></div></div></section>
+          </section>
+          <p class="security-note">安全提示：前端不会将密钥提交、同步或写入本地持久化存储。生产环境应由后端通过环境变量或密钥管理服务持有密钥。</p>
+        </section>
+        <section class="view" data-view-panel="skills">
+          <header class="topbar"><div><p class="eyebrow">Skill System</p><h1>Agent 技能中心</h1></div><span class="session-label" id="skills-summary">0 项技能已启用</span></header>
+          <section class="skills-intro"><div><p class="eyebrow">专属能力</p><h2>为每个 Agent 配置可审计的工作技能</h2><p>技能决定 Agent 可以执行的操作范围。指挥 Agent 只负责任务分解和分派，专业 Agent 仅使用其被授权的专属 Skill。</p></div></section>
+          <section class="skills-grid" id="skills-grid"></section>
         </section>
       </section>
     </main>

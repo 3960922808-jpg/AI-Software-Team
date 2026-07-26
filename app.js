@@ -15,6 +15,19 @@ const agents = [
   ["SE", "安全专家 Agent", "安全审查与风险控制"], ["DO", "DevOps Agent", "构建、部署与运行保障"]
 ];
 let eventLog = ["项目工作台已连接至调度中心", "Agent 注册表已加载", "等待新的任务进入队列"];
+const skillCatalog = [
+  ["CO", "指挥 Agent", [["任务分解", "将目标拆分为可执行任务"], ["Agent 路由", "按能力与容量分派任务"], ["结果汇总", "合并子 Agent 的执行结论"]]],
+  ["PM", "产品经理 Agent", [["需求分析", "提炼用户目标与验收条件"], ["PRD 生成", "生成结构化产品需求文档"], ["优先级规划", "基于价值与风险排列任务"]]],
+  ["AR", "架构师 Agent", [["架构设计", "制定服务、数据与接口边界"], ["技术选型", "输出可追溯的技术决策"], ["接口契约", "定义模块间数据与调用规范"]]],
+  ["TL", "技术主管 Agent", [["代码评审", "检查实现质量与可维护性"], ["实施规划", "把技术方案转成开发计划"], ["风险识别", "发现依赖、复杂度和交付风险"]]],
+  ["FE", "前端 Agent", [["界面实现", "构建响应式用户界面"], ["组件设计", "沉淀可复用交互组件"], ["体验验证", "检查可用性与状态反馈"]]],
+  ["BE", "后端 Agent", [["API 设计", "实现服务接口和业务规则"], ["数据建模", "设计数据结构与迁移策略"], ["服务集成", "连接外部服务与消息流"]]],
+  ["QA", "测试 Agent", [["测试设计", "覆盖核心流程与异常路径"], ["自动化测试", "维护可重复执行的测试集"], ["质量报告", "输出缺陷、覆盖率和验收结论"]]],
+  ["SE", "安全专家 Agent", [["威胁建模", "识别资产、边界与攻击路径"], ["依赖审查", "检查组件与供应链风险"], ["安全验收", "验证认证、授权和数据保护"]]],
+  ["DO", "DevOps Agent", [["构建流水线", "配置可重复的构建与发布"], ["部署编排", "管理环境与版本交付"], ["运行监控", "建立日志、指标和告警"]]]
+];
+let enabledSkills = new Set(skillCatalog.flatMap(([, , skills]) => skills.map(([, description]) => description)));
+let activeApiKey = "";
 function saveTasks() { localStorage.setItem(storageKey, JSON.stringify(tasks)); }
 function render() {
   document.querySelectorAll(".column").forEach((column) => {
@@ -44,6 +57,24 @@ function renderOrchestrator() {
   document.querySelector("#agent-registry").innerHTML = agents.map(([code, name, specialty]) => { const busy = activeAgents.has(name); return `<article class="agent-card"><header><span class="agent-icon">${code}</span><h3>${name}</h3></header><p>${specialty}</p><span class="agent-state ${busy ? "busy" : ""}">${busy ? "执行中" : "可调度"}</span></article>`; }).join("");
   document.querySelector("#event-log").innerHTML = eventLog.slice(0, 5).map((event, index) => `<li><time>${index === 0 ? "刚刚" : `${index + 1} 分钟前`}</time><span><span class="event-tag">调度</span> ${escapeHtml(event)}</span></li>`).join("");
 }
+function renderSkills() {
+  document.querySelector("#skills-summary").textContent = `${enabledSkills.size} 项技能已启用`;
+  document.querySelector("#skills-grid").innerHTML = skillCatalog.map(([code, agent, skills]) => `<article class="skill-card"><header class="skill-card-header"><div class="skill-owner"><b>${code}</b><h2>${agent}</h2></div><span class="skill-count">${skills.length} 项专属技能</span></header><ul class="skill-list">${skills.map(([name, description]) => `<li><div><strong>${name}</strong><small>${description}</small></div><input class="skill-toggle" type="checkbox" data-skill="${escapeHtml(description)}" aria-label="切换 ${name}" ${enabledSkills.has(description) ? "checked" : ""} /></li>`).join("")}</ul></article>`).join("");
+}
+function applyProviderDefaults() {
+  const provider = document.querySelector("#provider-select").value;
+  const baseUrl = document.querySelector("#base-url");
+  const defaults = { openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com", google: "https://generativelanguage.googleapis.com", deepseek: "https://api.deepseek.com/v1", custom: "" };
+  baseUrl.value = defaults[provider];
+}
+function loadModelSettings() {
+  const settings = JSON.parse(sessionStorage.getItem("ai-software-team.model-settings") || "null");
+  if (!settings) { applyProviderDefaults(); return; }
+  const form = document.querySelector("#model-settings-form");
+  form.provider.value = settings.provider; form.baseUrl.value = settings.baseUrl; form.model.value = settings.model;
+  document.querySelector("#routing-mode").value = settings.routingMode || "balanced";
+  const state = document.querySelector("#connection-state"); state.textContent = "已在当前会话配置"; state.classList.add("connected");
+}
 function escapeHtml(value) { const node = document.createElement("div"); node.textContent = value; return node.innerHTML; }
 document.querySelector("#board").addEventListener("click", (event) => {
   const { id, status, delete: deleteId } = event.target.dataset;
@@ -69,4 +100,20 @@ document.querySelector("#run-queue-button").addEventListener("click", () => {
   tasks = tasks.map((task) => task.id === nextTask.id ? { ...task, status: "progress" } : task);
   eventLog.unshift(`${nextTask.agent} 已接收任务“${nextTask.title}”`); saveTasks(); render();
 });
+document.querySelector("#skills-grid").addEventListener("change", (event) => {
+  const skill = event.target.dataset.skill;
+  if (!skill) return;
+  event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills();
+});
+document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
+document.querySelector("#model-settings-form").addEventListener("submit", (event) => {
+  event.preventDefault(); const data = new FormData(event.currentTarget);
+  activeApiKey = data.get("apiKey").trim();
+  sessionStorage.setItem("ai-software-team.model-settings", JSON.stringify({ provider: data.get("provider"), baseUrl: data.get("baseUrl"), model: data.get("model"), routingMode: document.querySelector("#routing-mode").value }));
+  const state = document.querySelector("#connection-state"); state.textContent = "已在当前会话配置"; state.classList.add("connected");
+  eventLog.unshift(`指挥 Agent 已更新 ${data.get("model")} 模型连接配置`); renderOrchestrator();
+});
+document.querySelector("#clear-api-button").addEventListener("click", () => { activeApiKey = ""; sessionStorage.removeItem("ai-software-team.model-settings"); document.querySelector("#model-settings-form").reset(); applyProviderDefaults(); const state = document.querySelector("#connection-state"); state.textContent = "未配置"; state.classList.remove("connected"); });
+loadModelSettings();
+renderSkills();
 render();
