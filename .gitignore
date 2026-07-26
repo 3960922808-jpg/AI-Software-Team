@@ -1,5 +1,8 @@
 .DS_Store
 node_modules/
+ui-*.png
+release-v*/
+.electron-dist-v*/
 .env
 .env.*
 __pycache__/

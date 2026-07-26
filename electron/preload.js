@@ -8,5 +8,8 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   getModelStatus: () => ipcRenderer.invoke("model:status"),
   testModel: () => ipcRenderer.invoke("model:test"),
   executeAgentTask: (payload) => ipcRenderer.invoke("agent:execute", payload),
-  chat: (payload) => ipcRenderer.invoke("agent:chat", payload)
+  chat: (payload) => ipcRenderer.invoke("agent:chat", payload),
+  getWorkspace: () => ipcRenderer.invoke("workspace:get"),
+  setWorkspace: (selectedPath) => ipcRenderer.invoke("workspace:set", selectedPath),
+  chooseWorkspace: () => ipcRenderer.invoke("workspace:choose")
 }));

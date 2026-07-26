@@ -9,7 +9,8 @@ const roleAgents = [
   ["PM", "产品经理 Agent", "需求拆解与优先级规划"], ["AR", "架构师 Agent", "系统设计与技术决策"],
   ["TL", "技术主管 Agent", "技术路线与质量把控"], ["SE", "安全专家 Agent", "安全审查与风险控制"],
   ["FE", "前端 Agent", "界面开发与体验实现"], ["BE", "后端 Agent", "服务与业务逻辑实现"],
-  ["QA", "测试 Agent", "测试设计与质量验证"], ["DO", "DevOps Agent", "构建、部署与运行保障"]
+  ["DB", "数据库 Agent", "数据模型、SQL 与迁移管理"], ["QA", "测试 Agent", "测试设计与质量验证"],
+  ["CR", "代码审查 Agent", "缺陷审查与重构建议"], ["DO", "DevOps Agent", "构建、部署与运行保障"]
 ];
 const defaultOfficeAgents = [
   { id: "product", name: "芽芽", role: "产品经理 Agent", sprite: "product", desk: 0 },
@@ -18,10 +19,12 @@ const defaultOfficeAgents = [
   { id: "security", name: "焰焰", role: "安全专家 Agent", sprite: "security", desk: 1 },
   { id: "frontend", name: "糖糖", role: "前端 Agent", sprite: "frontend", desk: 2 },
   { id: "backend", name: "豆豆", role: "后端 Agent", sprite: "backend", desk: 2 },
+  { id: "database", name: "桃桃", role: "数据库 Agent", sprite: "product", desk: 3 },
   { id: "tester", name: "琪琪", role: "测试 Agent", sprite: "tester", desk: 3 },
-  { id: "devops", name: "小蓝", role: "DevOps Agent", sprite: "devops", desk: 3 }
+  { id: "reviewer", name: "审审", role: "代码审查 Agent", sprite: "techlead", desk: 4 },
+  { id: "devops", name: "小蓝", role: "DevOps Agent", sprite: "devops", desk: 4 }
 ];
-const deskNames = ["产品与架构", "技术与安全", "前端与后端", "测试与交付"];
+const deskNames = ["产品与架构", "技术与安全", "前端与后端", "数据与测试", "审查与交付"];
 const complaints = {
   "产品经理 Agent": ["需求又变啦？让我先喝口云朵茶。", "这个优先级，真的不能再商量一下吗？"],
   "架构师 Agent": ["再画一张图，应该就是最后一张了……", "这个依赖关系，比毛线团还复杂。"],
@@ -29,7 +32,9 @@ const complaints = {
   "安全专家 Agent": ["又发现一个边界条件，今晚别想早下班了。", "权限不能偷懒，真的不能。"],
   "前端 Agent": ["这个像素到底是谁挪了一格？", "再改一次样式，我的尾巴要打结了。"],
   "后端 Agent": ["接口很稳定，除非需求又悄悄变了。", "数据库说它也需要休息。"],
+  "数据库 Agent": ["这张表又长胖了，索引也得跟上。", "迁移脚本要可回滚，别催我。"],
   "测试 Agent": ["我不是在挑错，我是在保护大家。", "这个用例已经跑到第八遍啦。"],
+  "代码审查 Agent": ["这段代码能跑，但它还可以更诚实一点。", "命名很重要，我再看一遍。"],
   "DevOps Agent": ["发布窗口又在半夜，呜……", "流水线绿了，我的眼睛也快绿了。"]
 };
 const skillCatalog = [
@@ -39,7 +44,9 @@ const skillCatalog = [
   ["TL", "技术主管 Agent", [["代码评审", "检查实现质量与可维护性"], ["实施规划", "把技术方案转成开发计划"], ["风险识别", "发现依赖、复杂度和交付风险"]]],
   ["FE", "前端 Agent", [["界面实现", "构建响应式用户界面"], ["组件设计", "沉淀可复用交互组件"], ["体验验证", "检查可用性与状态反馈"]]],
   ["BE", "后端 Agent", [["API 设计", "实现服务接口和业务规则"], ["数据建模", "设计数据结构与迁移策略"], ["服务集成", "连接外部服务与消息流"]]],
+  ["DB", "数据库 Agent", [["数据模型", "设计实体、约束和关系"], ["SQL 优化", "分析查询计划与索引"], ["迁移管理", "编写可回滚的数据库迁移"]]],
   ["QA", "测试 Agent", [["测试设计", "覆盖核心流程与异常路径"], ["自动化测试", "维护可重复执行的测试集"], ["质量报告", "输出缺陷、覆盖率和验收结论"]]],
+  ["CR", "代码审查 Agent", [["代码审查", "发现实现缺陷与潜在回归"], ["规范检查", "检查一致性、安全性和可读性"], ["重构建议", "给出低风险的可维护性改进"]]],
   ["SE", "安全专家 Agent", [["威胁建模", "识别资产、边界与攻击路径"], ["依赖审查", "检查组件与供应链风险"], ["安全验收", "验证认证、授权和数据保护"]]],
   ["DO", "DevOps Agent", [["构建流水线", "配置可重复的构建与发布"], ["部署编排", "管理环境与版本交付"], ["运行监控", "建立日志、指标和告警"]]]
 ];
@@ -59,12 +66,18 @@ if (!localStorage.getItem("ai-software-team.office-migration-v1")) {
   localStorage.setItem(storageKeys.memory, JSON.stringify(memories));
   localStorage.setItem(storageKeys.knowledge, JSON.stringify(knowledgeDocuments));
 }
+if (!localStorage.getItem("ai-software-team.office-migration-v2")) {
+  for (const agent of defaultOfficeAgents) if (!officeAgents.some((item) => item.id === agent.id)) officeAgents.push(agent);
+  localStorage.setItem("ai-software-team.office-migration-v2", "done");
+  localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents));
+}
 let enabledSkills = new Set(skillCatalog.flatMap(([, , skills]) => skills.map(([, description]) => description)));
 let eventLog = ["灵灵已进入工作室", "Agent 团队等待新的任务"];
 let selectedAgentId = null;
 let complaintAgentId = null;
 let complaintText = "";
 let chatMessages = [];
+let workspacePath = null;
 
 function saveTasks() { localStorage.setItem(storageKeys.tasks, JSON.stringify(tasks)); }
 function saveAgents() { localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents)); }
@@ -167,8 +180,13 @@ async function executeNextTask(taskId) {
   tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "progress", running: true, startedAt: Date.now() } : item); eventLog.unshift(`灵灵正在分析“${task.title}”`); saveTasks(); render();
   try {
     const response = await window.desktop.executeAgentTask({ task, skills: skillMap(), context: getTeamContext() });
-    tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "done", running: false, agent: response.delegateTo, plan: response.plan, result: response.result, completedAt: response.completedAt } : item);
-    eventLog.unshift(`${response.delegateTo} 已完成“${task.title}”`);
+    const files = response.runs.flatMap((run) => run.artifacts || []);
+    tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "done", running: false, agent: response.delegateTo, plan: response.plan, runs: response.runs, artifacts: files, result: response.result, completedAt: response.completedAt } : item);
+    eventLog.unshift(`${response.runs.length} 个子 Agent 步骤已完成“${task.title}”，生成 ${files.length} 个文件`);
+    const teamReport = response.runs.map((run, index) => `${index + 1}. ${run.delegateTo} · ${run.title}\n${run.summary}`).join("\n\n");
+    const artifactReport = files.length ? files.map((file) => `- ${file.relativePath}`).join("\n") : "- 本次仅交付文本结果";
+    chatMessages.push({ role: "assistant", content: `## ${task.title} · 团队已完成\n\n${teamReport}\n\n### 生成文件\n${artifactReport}\n\n### 主 Agent 验收\n${response.result}` });
+    renderChat();
   } catch (error) {
     tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "todo", running: false, error: error.message } : item); eventLog.unshift(`执行失败：${error.message}`);
   } finally { button.disabled = false; button.textContent = "AI 执行下一任务"; saveTasks(); render(); }
@@ -196,7 +214,7 @@ function hideAgentMenu() { document.querySelector("#agent-context-menu").hidden 
 
 function renderChat() {
   const messages = document.querySelector("#chat-messages");
-  messages.innerHTML = `<article class="chat-message assistant"><p>你好呀，我是灵灵。你可以直接告诉我想做什么，我会结合任务、记忆和知识库来回答。</p></article>${chatMessages.map((message) => `<article class="chat-message ${message.role} ${message.pending ? "pending" : ""}"><p>${escapeHtml(message.content)}</p></article>`).join("")}`;
+  messages.innerHTML = `<article class="chat-message assistant"><p>告诉我你要交付什么。我可以分析问题，也可以创建任务并调用完整 Agent 团队执行。</p></article>${chatMessages.map((message, index) => `<article class="chat-message ${message.role} ${message.pending ? "pending" : ""}"><div>${formatChatContent(message.content)}</div>${message.action ? `<button class="chat-action-button" type="button" data-chat-action="${index}">${message.action.type === "create_and_execute" ? "创建并交给团队执行" : "创建任务"}</button>` : ""}</article>`).join("")}`;
   messages.scrollTop = messages.scrollHeight;
 }
 async function sendChat(content) {
@@ -204,9 +222,23 @@ async function sendChat(content) {
   try {
     if (!window.desktop?.chat) throw new Error("请先使用 Electron 桌面版并配置模型 API");
     const result = await window.desktop.chat({ messages: chatMessages.filter((message) => !message.pending), context: getTeamContext() });
-    chatMessages[chatMessages.length - 1] = { role: "assistant", content: result.content };
+    chatMessages[chatMessages.length - 1] = { role: "assistant", content: result.content, action: result.action };
   } catch (error) { chatMessages[chatMessages.length - 1] = { role: "assistant", content: `暂时无法回答：${error.message}` }; }
   renderChat();
+}
+function formatChatContent(content) {
+  const escaped = escapeHtml(content);
+  return escaped.replace(/```([\w-]*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>');
+}
+async function applyChatAction(index) {
+  const message = chatMessages[index];
+  const action = message?.action;
+  if (!action || !["create_task", "create_and_execute"].includes(action.type)) return;
+  const validAgents = roleAgents.map(([, name]) => name);
+  const task = { id: crypto.randomUUID(), title: String(action.title || "AI 创建的任务").slice(0, 60), description: String(action.description || "").slice(0, 1000), agent: validAgents.includes(action.agent) ? action.agent : "技术主管 Agent", priority: ["high", "medium", "low"].includes(action.priority) ? action.priority : "medium", status: "todo" };
+  tasks.unshift(task); message.action = null; saveTasks(); render(); renderChat();
+  eventLog.unshift(`灵灵从对话创建了“${task.title}”`);
+  if (action.type === "create_and_execute") await executeNextTask(task.id);
 }
 
 function activateView(name) { document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name)); document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === name)); }
@@ -229,6 +261,22 @@ document.querySelector("#chat-form").addEventListener("submit", (event) => { eve
 document.querySelector("#chat-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); document.querySelector("#chat-form").requestSubmit(); } });
 document.querySelectorAll(".chat-suggestions button").forEach((button) => button.addEventListener("click", () => sendChat(button.textContent)));
 document.querySelector("#clear-chat-button").addEventListener("click", () => { chatMessages = []; renderChat(); });
+document.querySelector("#chat-messages").addEventListener("click", (event) => { const index = event.target.dataset.chatAction; if (index !== undefined) applyChatAction(Number(index)); });
+
+async function chooseWorkspace() {
+  if (!window.desktop?.chooseWorkspace) return;
+  const result = await window.desktop.chooseWorkspace();
+  setWorkspaceState(result.path || null);
+}
+function setWorkspaceState(nextPath) {
+  workspacePath = nextPath;
+  const shortName = nextPath ? nextPath.split(/[\\/]/).filter(Boolean).pop() : "选择工作目录";
+  document.querySelector("#workspace-label").textContent = shortName;
+  document.querySelector("#workspace-path").value = nextPath || "";
+  document.querySelector("#chat-workspace-label").textContent = nextPath ? `产物目录：${shortName}` : "未选择工作目录";
+}
+document.querySelector("#workspace-button").addEventListener("click", chooseWorkspace);
+document.querySelector("#settings-workspace-button").addEventListener("click", chooseWorkspace);
 
 document.querySelector("#skills-grid").addEventListener("change", (event) => { const skill = event.target.dataset.skill; if (!skill) return; event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills(); });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
@@ -258,3 +306,4 @@ setInterval(() => renderOffice(), 3000);
 
 loadModelSettings(); renderSkills(); renderChat(); render();
 window.desktop?.getModelStatus?.().then((status) => setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"));
+window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));

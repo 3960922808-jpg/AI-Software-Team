@@ -1,13 +1,13 @@
 {
   "name": "ai-software-team",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Windows desktop multi-agent software development workspace",
   "main": "electron/main.js",
   "author": "AI Software Team",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "build:windows": "electron-builder --win nsis portable",
+    "build:windows": "electron-builder --win nsis zip",
     "pack:windows": "electron-builder --win --dir"
   },
   "devDependencies": {
@@ -19,7 +19,7 @@
     "productName": "AI Software Team",
     "asar": true,
     "directories": {
-      "output": "release-v0.7"
+      "output": "release-v0.8"
     },
     "files": [
       "index.html",
@@ -33,8 +33,9 @@
       "icon": "build/icon.png",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] }
+        { "target": "zip", "arch": ["x64"] }
       ]
+      ,"artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "artifactName": "${productName}-${version}-${arch}-setup.${ext}",
@@ -43,9 +44,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "AI Software Team"
-    },
-    "portable": {
-      "artifactName": "${productName}-${version}-${arch}-portable.${ext}"
     }
   }
 }

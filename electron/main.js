@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
@@ -10,7 +10,7 @@ const createWindow = () => {
     minWidth: 1040,
     minHeight: 680,
     show: false,
-    backgroundColor: "#f4f7f8",
+    backgroundColor: "#ffffff",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -26,6 +26,14 @@ const createWindow = () => {
   if (process.env.AI_TEAM_SCREENSHOT) {
     window.webContents.once("did-finish-load", async () => {
       await window.webContents.executeJavaScript(`(() => {
+        const requestedView = ${JSON.stringify(process.env.AI_TEAM_SCREENSHOT_VIEW || "projects")};
+        if (requestedView !== 'projects') {
+          document.querySelector('[data-open-view="' + requestedView + '"]')?.click();
+          document.querySelector('[data-view="' + requestedView + '"]')?.click();
+          const panel = document.querySelector('[data-view-panel="' + requestedView + '"]');
+          if (!panel?.classList.contains('active')) throw new Error('Requested view did not open');
+          return;
+        }
         const pet = document.querySelector('.agent-pet');
         pet.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 520, clientY: 330 }));
         const menu = document.querySelector('#agent-context-menu');
@@ -59,6 +67,12 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("model:test", () => modelRuntime.testConnection());
     ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask(payload));
     ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat(payload));
+    ipcMain.handle("workspace:get", () => modelRuntime.getWorkspace());
+    ipcMain.handle("workspace:set", (_event, selectedPath) => modelRuntime.setWorkspace(selectedPath));
+    ipcMain.handle("workspace:choose", async () => {
+      const result = await dialog.showOpenDialog({ title: "选择 Agent 产物工作目录", properties: ["openDirectory", "createDirectory"] });
+      return result.canceled ? modelRuntime.getWorkspace() : modelRuntime.setWorkspace(result.filePaths[0]);
+    });
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
