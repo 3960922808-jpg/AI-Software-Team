@@ -7,5 +7,6 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   clearModel: () => ipcRenderer.invoke("model:clear"),
   getModelStatus: () => ipcRenderer.invoke("model:status"),
   testModel: () => ipcRenderer.invoke("model:test"),
-  executeAgentTask: (payload) => ipcRenderer.invoke("agent:execute", payload)
+  executeAgentTask: (payload) => ipcRenderer.invoke("agent:execute", payload),
+  chat: (payload) => ipcRenderer.invoke("agent:chat", payload)
 }));

@@ -25,6 +25,15 @@ const createWindow = () => {
   window.once("ready-to-show", () => window.show());
   if (process.env.AI_TEAM_SCREENSHOT) {
     window.webContents.once("did-finish-load", async () => {
+      await window.webContents.executeJavaScript(`(() => {
+        const pet = document.querySelector('.agent-pet');
+        pet.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 520, clientY: 330 }));
+        const menu = document.querySelector('#agent-context-menu');
+        const bounds = menu.getBoundingClientRect();
+        if (menu.hidden || getComputedStyle(menu).display === 'none' || bounds.width < 200) throw new Error('Agent context menu did not open');
+        menu.style.outline = '3px solid #d34b4b';
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
       const image = await window.webContents.capturePage();
       fs.writeFileSync(process.env.AI_TEAM_SCREENSHOT, image.toPNG());
       app.quit();
@@ -49,6 +58,7 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("model:status", () => modelRuntime.status());
     ipcMain.handle("model:test", () => modelRuntime.testConnection());
     ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask(payload));
+    ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat(payload));
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

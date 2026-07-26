@@ -75,4 +75,14 @@ async function executeTask(payload) {
   return { ...plan, result, model: configuration.model, completedAt: new Date().toISOString() };
 }
 
-module.exports = { configure, clear, status, testConnection, executeTask };
+async function chat(payload) {
+  const history = (payload.messages || []).slice(-12).map((message) => `${message.role === "user" ? "用户" : "灵灵"}：${message.content}`).join("\n");
+  const context = (payload.context || []).slice(0, 10).join("\n");
+  const result = await callModel(
+    "你是 AI 软件开发团队的项目经理灵灵。你的语气温暖、简洁、专业。你可以回答问题、拆解需求、分析当前任务，但不能谎称已经执行未执行的操作。需要行动时给出明确下一步。",
+    `团队上下文：\n${context || "暂无"}\n\n对话记录：\n${history}`
+  );
+  return { content: result, model: configuration.model };
+}
+
+module.exports = { configure, clear, status, testConnection, executeTask, chat };

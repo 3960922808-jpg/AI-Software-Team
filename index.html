@@ -12,7 +12,7 @@
       <aside class="sidebar">
         <div class="brand"><span class="brand-mark">AI</span><span>Software Team</span></div>
         <nav aria-label="主导航">
-          <button class="nav-item active" type="button" data-view="projects"><span>▦</span>项目工作台</button>
+          <button class="nav-item active" type="button" data-view="projects"><span>▦</span>Agent 工作室</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
           <button class="nav-item" type="button" data-view="memory"><span>◇</span>记忆与知识库</button>
           <button class="nav-item" type="button" data-view="settings"><span>◈</span>模型与 API</button>
@@ -24,21 +24,25 @@
 
       <section class="workspace">
         <section class="view active" data-view-panel="projects">
-          <header class="topbar command-topbar">
-            <div><p class="eyebrow">AI SOFTWARE TEAM / COMMAND CENTER</p><h1>研发指挥台</h1></div>
-            <div class="topbar-actions"><span class="runtime-pill" id="runtime-pill"><span class="status-dot"></span><span>模型待配置</span></span><button class="primary-button" id="new-task-button" type="button">新建任务</button></div>
-          </header>
-          <section class="project-focus" aria-labelledby="brief-title">
-            <div class="project-focus-main"><div class="project-kicker"><span>当前项目</span><span class="badge">MVP · 活跃</span></div><h2 id="brief-title">AI Software Team</h2><p>构建由指挥 Agent 统筹、专业子 Agent 协作的软件研发与交付系统。</p><div class="project-progress"><div><span>整体进度</span><strong id="project-progress-label">0%</strong></div><progress id="project-progress" max="100" value="0"></progress></div></div>
-            <div class="command-entry"><label for="quick-task-input">向团队下达任务</label><div><input id="quick-task-input" type="text" maxlength="120" placeholder="例如：为登录模块设计 API、数据库和测试方案" /><button class="primary-button" id="quick-task-button" type="button">创建并调度</button></div><small>指挥 Agent 将分析目标并选择合适的专业 Agent。</small></div>
+          <header class="topbar studio-topbar"><div><p class="eyebrow">LINGLING'S AGENT STUDIO</p><h1>Agent 工作室</h1></div><div class="topbar-actions"><span class="runtime-pill" id="runtime-pill"><span class="status-dot"></span><span>模型待配置</span></span><button class="primary-button" id="new-task-button" type="button">新建任务</button></div></header>
+          <section class="studio-summary"><div><span>团队成员</span><strong id="studio-agent-count">8</strong></div><div><span>等待任务</span><strong id="metric-todo">0</strong></div><div><span>正在工作</span><strong id="metric-progress">0</strong></div><div><span>今日完成</span><strong id="metric-done">0</strong></div><span id="task-total" hidden>0</span><span id="metric-high" hidden>0</span><progress id="project-progress" max="100" value="0" hidden></progress><span id="project-progress-label" hidden>0%</span><div id="dashboard-agents" hidden></div><div id="latest-output" hidden></div>
           </section>
-          <section class="metrics command-metrics" aria-label="项目概览">
-            <article><p>任务总数</p><strong id="task-total">0</strong><small>当前项目范围</small></article><article><p>待调度</p><strong id="metric-todo">0</strong><small>等待指挥 Agent</small></article><article><p>执行中</p><strong id="metric-progress">0</strong><small>专业 Agent 工作中</small></article><article><p>已交付</p><strong id="metric-done">0</strong><small>包含执行结果</small></article><span id="metric-high" hidden>0</span>
+          <section class="studio-layout">
+            <section class="office-scene" id="office-scene" aria-label="Agent 办公室">
+              <div class="office-wall"><div class="office-window"><span></span><span></span><span></span></div><div class="wall-board"><b>TEAM BOARD</b><small>灵灵正在巡查工作进度</small></div><div class="wall-clock"><i></i></div></div>
+              <div class="office-floor"></div>
+              <div class="desk-grid" id="desk-grid"></div>
+              <div class="manager-character" id="manager-character" data-agent-id="manager"><div class="manager-speech" id="manager-speech">大家加油，记得保存进度哦！</div><img src="assets/agents/manager.png" alt="项目经理灵灵" /><span>灵灵 · 项目经理</span></div>
+              <div class="office-tip">右键点击 Agent 查看进度、编辑或删除</div>
+            </section>
+            <aside class="ai-chat-panel">
+              <header><div class="chat-avatar"><img src="assets/agents/manager.png" alt="灵灵" /></div><div><h2>灵灵 AI</h2><span><i></i><b id="chat-model-label">等待模型配置</b></span></div><button class="icon-button" id="clear-chat-button" type="button" title="清空对话">×</button></header>
+              <div class="chat-messages" id="chat-messages"><article class="chat-message assistant"><p>你好呀，我是灵灵。你可以直接告诉我想做什么，我会结合任务、记忆和知识库来回答。</p></article></div>
+              <div class="chat-suggestions"><button type="button">团队现在在做什么？</button><button type="button">帮我拆解一个新需求</button></div>
+              <form class="chat-composer" id="chat-form"><textarea id="chat-input" maxlength="4000" placeholder="给灵灵发送消息…" required></textarea><div><span>Enter 发送</span><button class="primary-button" type="submit">发送</button></div></form>
+            </aside>
           </section>
-          <section class="dashboard-layout">
-            <section class="board-section" aria-labelledby="board-title"><div class="section-heading"><div><p class="eyebrow">EXECUTION BOARD</p><h2 id="board-title">任务执行流</h2></div><button class="text-button" id="reset-button" type="button">恢复示例</button></div><div class="board" id="board"><section class="column" data-status="todo"><header><h3>待处理</h3><span class="count">0</span></header><div class="task-list"></div></section><section class="column" data-status="progress"><header><h3>执行中</h3><span class="count">0</span></header><div class="task-list"></div></section><section class="column" data-status="done"><header><h3>已完成</h3><span class="count">0</span></header><div class="task-list"></div></section></div></section>
-            <aside class="command-rail"><section><div class="section-heading"><div><p class="eyebrow">AGENT PULSE</p><h2>团队状态</h2></div><button class="text-button" type="button" data-open-view="orchestrator">查看调度</button></div><div id="dashboard-agents" class="dashboard-agents"></div></section><section><div class="section-heading"><div><p class="eyebrow">RECENT OUTPUT</p><h2>最新交付</h2></div></div><div id="latest-output" class="latest-output"></div></section></aside>
-          </section>
+          <div class="agent-context-menu" id="agent-context-menu" hidden><header><img id="context-agent-image" alt="" /><div><strong id="context-agent-name"></strong><span id="context-agent-role"></span></div></header><div class="context-progress"><div><span>当前进度</span><b id="context-progress-label">0%</b></div><progress id="context-progress" max="100" value="0"></progress><small id="context-task-label">当前空闲</small></div><button type="button" id="context-edit-agent">编辑 Agent</button><button class="danger" type="button" id="context-delete-agent">删除 Agent</button></div>
         </section>
         <section class="view" data-view-panel="orchestrator">
           <header class="topbar"><div><p class="eyebrow">Agent Orchestrator</p><h1>智能调度中心</h1></div><button class="primary-button" id="run-queue-button" type="button">AI 执行下一任务</button></header>
@@ -83,6 +87,7 @@
     <dialog id="memory-dialog">
       <form id="memory-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">Project Memory</p><h2>添加项目记忆</h2></div><button class="icon-button" value="cancel" aria-label="关闭">×</button></div><label>标题<input name="title" required maxlength="60" placeholder="例如：数据库选型决策" /></label><label>内容<textarea name="content" required maxlength="1000" placeholder="记录决策、约束、经验或需要长期保留的上下文"></textarea></label><label>类型<select name="type"><option>架构决策</option><option>产品约束</option><option>用户偏好</option><option>经验总结</option><option>其他</option></select></label><menu><button class="secondary-button" value="cancel">取消</button><button class="primary-button" value="default">保存记忆</button></menu></form>
     </dialog>
+    <dialog id="agent-dialog"><form id="agent-form" method="dialog"><div class="dialog-heading"><div><p class="eyebrow">AGENT PROFILE</p><h2>编辑 Agent</h2></div><button class="icon-button" value="cancel" aria-label="关闭">×</button></div><input name="id" type="hidden" /><label>显示名称<input name="name" required maxlength="24" /></label><label>职责<select name="role"><option>产品经理 Agent</option><option>架构师 Agent</option><option>技术主管 Agent</option><option>安全专家 Agent</option><option>前端 Agent</option><option>后端 Agent</option><option>测试 Agent</option><option>DevOps Agent</option></select></label><menu><button class="secondary-button" value="cancel">取消</button><button class="primary-button" value="default">保存</button></menu></form></dialog>
     <script src="app.js"></script>
   </body>
 </html>
