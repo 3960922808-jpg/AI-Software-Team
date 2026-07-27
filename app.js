@@ -136,7 +136,62 @@ function render() {
   const completion = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   document.querySelector("#project-progress").value = completion;
   document.querySelector("#project-progress-label").textContent = `${completion}%`;
-  renderOffice(); renderOrchestrator(); renderMemory(); renderDeploymentHistory(); renderExternalResources();
+  renderOffice(); renderOrchestrator(); renderMemory(); renderDeploymentHistory(); renderExternalResources(); renderAudit();
+}
+
+function buildAuditRecords() {
+  const taskRecords = tasks.map((task) => {
+    const status = task.error ? "失败" : task.status === "done" ? "成功" : task.status === "progress" ? "执行中" : "等待";
+    return {
+      id: task.id,
+      kind: "任务",
+      status,
+      title: task.title,
+      agent: task.agent || "未分派",
+      priority: task.priority || "medium",
+      timestamp: task.completedAt || (task.startedAt ? new Date(task.startedAt).toISOString() : task.createdAt || null),
+      stepCount: Array.isArray(task.runs) ? task.runs.length : 0,
+      artifactCount: Array.isArray(task.artifacts) ? task.artifacts.length : 0,
+      summary: task.error || task.result || task.description || "暂无执行结果",
+      steps: (task.runs || []).map((run) => ({ title: run.title, agent: run.delegateTo, summary: run.summary, checks: run.checks || [], artifacts: (run.artifacts || []).map((artifact) => artifact.relativePath) })),
+    };
+  });
+  const deployments = deploymentRecords.map((record) => ({
+    id: record.id,
+    kind: "部署",
+    status: record.status === "成功" || record.status === "候选已创建" ? "成功" : record.status === "失败" || record.status === "已回滚" ? "失败" : "等待",
+    title: `${record.environment} · ${record.version || "未关联版本"}`,
+    agent: "DevOps Agent",
+    timestamp: record.createdAt || null,
+    stepCount: 0,
+    artifactCount: 0,
+    summary: record.note || record.status,
+    url: record.url || "",
+    steps: [],
+  }));
+  return [...taskRecords, ...deployments].sort((left, right) => String(right.timestamp || "").localeCompare(String(left.timestamp || "")));
+}
+
+function getFilteredAuditRecords() {
+  const kind = document.querySelector("#audit-kind-filter")?.value || "all";
+  const status = document.querySelector("#audit-status-filter")?.value || "all";
+  const search = (document.querySelector("#audit-search")?.value || "").trim().toLowerCase();
+  return buildAuditRecords().filter((record) => (kind === "all" || record.kind === kind) && (status === "all" || record.status === status) && (!search || `${record.title} ${record.agent} ${record.summary}`.toLowerCase().includes(search)));
+}
+
+function renderAudit() {
+  const list = document.querySelector("#audit-list");
+  if (!list) return;
+  const all = buildAuditRecords();
+  const completed = all.filter((record) => record.kind === "任务" && ["成功", "失败"].includes(record.status));
+  const successful = completed.filter((record) => record.status === "成功").length;
+  const filtered = getFilteredAuditRecords();
+  document.querySelector("#audit-run-count").textContent = all.filter((record) => record.kind === "任务").length;
+  document.querySelector("#audit-success-rate").textContent = completed.length ? `${Math.round((successful / completed.length) * 100)}%` : "0%";
+  document.querySelector("#audit-step-count").textContent = all.reduce((total, record) => total + record.stepCount, 0);
+  document.querySelector("#audit-artifact-count").textContent = all.reduce((total, record) => total + record.artifactCount, 0);
+  document.querySelector("#audit-result-count").textContent = `${filtered.length} 条记录`;
+  list.innerHTML = filtered.length ? filtered.map((record) => `<details class="audit-record"><summary><span class="audit-kind">${escapeHtml(record.kind)}</span><div><strong>${escapeHtml(record.title)}</strong><small>${escapeHtml(record.agent)} · ${record.timestamp ? new Date(record.timestamp).toLocaleString("zh-CN") : "尚未开始"}</small></div><span class="audit-record-meta">${record.stepCount} 步 · ${record.artifactCount} 个产物</span><b class="audit-status ${record.status === "成功" ? "success" : record.status === "失败" ? "failure" : "pending"}">${record.status}</b></summary><div class="audit-record-body"><p>${escapeHtml(record.summary)}</p>${record.steps.length ? `<ol>${record.steps.map((step) => `<li><strong>${escapeHtml(step.agent)} · ${escapeHtml(step.title)}</strong><p>${escapeHtml(step.summary || "未返回摘要")}</p><small>${step.artifacts.length ? `产物：${step.artifacts.map(escapeHtml).join("、")}` : "无文件产物"}</small></li>`).join("")}</ol>` : ""}${record.url ? `<a href="${escapeHtml(record.url)}" target="_blank" rel="noreferrer">${escapeHtml(record.url)}</a>` : ""}</div></details>`).join("") : '<p class="empty-state">没有符合筛选条件的运行记录</p>';
 }
 
 function renderExternalResources() {
@@ -234,11 +289,30 @@ function applyProviderDefaults() {
   const defaults = { openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com", google: "https://generativelanguage.googleapis.com", deepseek: "https://api.deepseek.com/v1", custom: "" };
   document.querySelector("#base-url").value = defaults[provider];
 }
-function loadModelSettings() {
-  const settings = loadJson("ai-software-team.model-settings", null) || JSON.parse(sessionStorage.getItem("ai-software-team.model-settings") || "null");
-  if (!settings) { applyProviderDefaults(); return; }
-  const form = document.querySelector("#model-settings-form"); form.provider.value = settings.provider; form.baseUrl.value = settings.baseUrl; form.model.value = settings.model;
+function applyModelSettings(settings) {
+  if (!settings?.configured) { applyProviderDefaults(); return; }
+  const form = document.querySelector("#model-settings-form");
+  form.provider.value = settings.provider || "openai";
+  form.baseUrl.value = settings.baseUrl || "";
+  form.model.value = settings.model || "";
   document.querySelector("#routing-mode").value = settings.routingMode || "balanced";
+  if (settings.apiKeyConfigured) {
+    form.apiKey.placeholder = "已安全保存，留空则继续使用";
+    document.querySelector("#api-key-hint").textContent = "密钥已由 Windows 系统加密保存；输入新密钥可替换";
+  }
+}
+async function loadModelSettings() {
+  if (!window.desktop?.getModelStatus) {
+    const settings = loadJson("ai-software-team.model-settings", null);
+    if (settings) applyModelSettings({ ...settings, configured: true }); else applyProviderDefaults();
+    return;
+  }
+  try {
+    const status = await window.desktop.getModelStatus();
+    applyModelSettings(status);
+    setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置");
+    if (status.persisted) setModelFeedback("配置已安全保存在本机，重启后会自动恢复", "success");
+  } catch (error) { setModelFeedback(`读取保存配置失败：${error.message}`, "error"); }
 }
 function setRuntimeState(configured, label) {
   const pill = document.querySelector("#runtime-pill"); pill.classList.toggle("connected", configured); pill.querySelector("span:last-child").textContent = label;
@@ -252,6 +326,7 @@ function getTeamContext() {
   const resources = externalResources.map((resource) => resource.type === "repository" ? `外部代码仓库 ${resource.data.name}：${resource.data.description || "无说明"}\n默认分支：${resource.data.defaultBranch}\n文件：${resource.data.files.slice(0, 300).map((file) => file.path).join("、")}` : `外部网页资料 ${resource.data.title}（${resource.data.url}）：${resource.data.content.slice(0, 8000)}`);
   return [...resources, ...tasks.map((task) => `任务[${task.status}] ${task.title}: ${task.result || task.description || ""}`), ...memories.map((item) => `记忆 ${item.title}: ${item.content}`), ...knowledgeDocuments.map((item) => `知识 ${item.title}: ${item.content.slice(0, 600)}`)];
 }
+function setModelFeedback(message, type = "") { const feedback = document.querySelector("#model-save-feedback"); feedback.textContent = message; feedback.className = `model-save-feedback ${type}`.trim(); }
 
 async function executeNextTask(taskId) {
   const task = taskId ? tasks.find((item) => item.id === taskId) : tasks.find((item) => item.status === "todo");
@@ -316,7 +391,7 @@ async function applyChatAction(index) {
   const action = message?.action;
   if (!action || !["create_task", "create_and_execute"].includes(action.type)) return;
   const validAgents = roleAgents.map(([, name]) => name);
-  const task = { id: crypto.randomUUID(), title: String(action.title || "AI 创建的任务").slice(0, 60), description: String(action.description || "").slice(0, 1000), agent: validAgents.includes(action.agent) ? action.agent : "技术主管 Agent", priority: ["high", "medium", "low"].includes(action.priority) ? action.priority : "medium", status: "todo" };
+  const task = { id: crypto.randomUUID(), title: String(action.title || "AI 创建的任务").slice(0, 60), description: String(action.description || "").slice(0, 1000), agent: validAgents.includes(action.agent) ? action.agent : "技术主管 Agent", priority: ["high", "medium", "low"].includes(action.priority) ? action.priority : "medium", status: "todo", createdAt: new Date().toISOString() };
   tasks.unshift(task); message.action = null; saveTasks(); render(); renderChat();
   eventLog.unshift(`灵灵从对话创建了“${task.title}”`);
   if (action.type === "create_and_execute") await executeNextTask(task.id);
@@ -328,8 +403,11 @@ document.querySelectorAll("[data-open-view]").forEach((button) => button.addEven
 
 const taskDialog = document.querySelector("#task-dialog");
 document.querySelector("#new-task-button").addEventListener("click", () => taskDialog.showModal());
-document.querySelector("#task-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); tasks.unshift({ id: crypto.randomUUID(), title: data.get("title").trim(), description: data.get("description").trim(), agent: data.get("agent"), priority: data.get("priority"), status: "todo" }); saveTasks(); render(); event.currentTarget.reset(); taskDialog.close(); });
+document.querySelector("#task-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); tasks.unshift({ id: crypto.randomUUID(), title: data.get("title").trim(), description: data.get("description").trim(), agent: data.get("agent"), priority: data.get("priority"), status: "todo", createdAt: new Date().toISOString() }); saveTasks(); render(); event.currentTarget.reset(); taskDialog.close(); });
 document.querySelector("#run-queue-button").addEventListener("click", () => executeNextTask());
+document.querySelectorAll("#audit-kind-filter,#audit-status-filter,#audit-search").forEach((control) => control.addEventListener("input", renderAudit));
+document.querySelector("#refresh-audit-button").addEventListener("click", renderAudit);
+document.querySelector("#export-audit-button").addEventListener("click", async () => { const button = document.querySelector("#export-audit-button"); const state = document.querySelector("#audit-export-state"); button.disabled = true; button.textContent = "导出中"; try { if (!window.desktop?.exportAudit) throw new Error("请在 Electron 桌面版中导出报告"); const records = getFilteredAuditRecords(); const result = await window.desktop.exportAudit({ formatVersion: 1, generatedAt: new Date().toISOString(), filters: { kind: document.querySelector("#audit-kind-filter").value, status: document.querySelector("#audit-status-filter").value, search: document.querySelector("#audit-search").value }, summary: { records: records.length, tasks: records.filter((record) => record.kind === "任务").length, deployments: records.filter((record) => record.kind === "部署").length }, records }); state.textContent = result.canceled ? "已取消导出" : `审计报告已导出：${result.path}`; state.className = "audit-export-state success"; } catch (error) { state.textContent = `导出失败：${error.message}`; state.className = "audit-export-state error"; } finally { button.disabled = false; button.textContent = "导出审计报告"; } });
 
 document.querySelector("#desk-grid").addEventListener("contextmenu", (event) => { const pet = event.target.closest("[data-agent-id]"); if (!pet) return; event.preventDefault(); showAgentMenu(pet.dataset.agentId, event.clientX, event.clientY); });
 document.querySelector("#manager-character").addEventListener("contextmenu", (event) => { event.preventDefault(); showAgentMenu("manager", event.clientX, event.clientY); });
@@ -389,7 +467,7 @@ document.querySelector("#deployment-form").addEventListener("submit", (event) =>
 document.querySelector("#agent-release-review-button").addEventListener("click", async () => {
   if (!deliveryReport) await refreshDelivery();
   const project = deliveryReport?.project?.name || "当前项目";
-  const task = { id: crypto.randomUUID(), title: `发布前评审：${project}`.slice(0, 60), description: `对 ${project} 执行发布前联合评审。检查构建、自动化测试、安全风险、代码质量、回滚方案和交付产物完整性，输出明确的通过或阻断结论。`, agent: "DevOps Agent", priority: "high", status: "todo" };
+  const task = { id: crypto.randomUUID(), title: `发布前评审：${project}`.slice(0, 60), description: `对 ${project} 执行发布前联合评审。检查构建、自动化测试、安全风险、代码质量、回滚方案和交付产物完整性，输出明确的通过或阻断结论。`, agent: "DevOps Agent", priority: "high", status: "todo", createdAt: new Date().toISOString() };
   tasks.unshift(task); saveTasks(); render(); activateView("orchestrator"); await executeNextTask(task.id);
 });
 
@@ -426,9 +504,9 @@ document.querySelector("#clear-resources-button").addEventListener("click", () =
 
 document.querySelector("#skills-grid").addEventListener("change", (event) => { const skill = event.target.dataset.skill; if (!skill) return; event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills(); });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
-document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const config = getModelFormConfig(); try { await configureRuntime(config); sessionStorage.setItem("ai-software-team.model-settings", JSON.stringify({ provider: config.provider, baseUrl: config.baseUrl, model: config.model, routingMode: config.routingMode })); event.currentTarget.querySelector('[name="apiKey"]').value = ""; eventLog.unshift(`灵灵已连接 ${config.model}`); render(); } catch (error) { setRuntimeState(false, "模型待配置"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } });
-document.querySelector("#test-api-button").addEventListener("click", async () => { const button = document.querySelector("#test-api-button"); button.disabled = true; button.textContent = "测试中"; try { const config = getModelFormConfig(); if (config.apiKey) await configureRuntime(config); const result = await window.desktop.testModel(); setRuntimeState(true, `${config.model} 已连接`); eventLog.unshift(`连接测试成功：${result.message}`); } catch (error) { eventLog.unshift(`连接测试失败：${error.message}`); } finally { button.disabled = false; button.textContent = "测试连接"; renderOrchestrator(); } });
-document.querySelector("#clear-api-button").addEventListener("click", async () => { await window.desktop?.clearModel?.(); sessionStorage.removeItem("ai-software-team.model-settings"); document.querySelector("#model-settings-form").reset(); applyProviderDefaults(); setRuntimeState(false, "模型待配置"); });
+document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const button = document.querySelector("#save-model-button"); const config = getModelFormConfig(); button.disabled = true; button.textContent = "保存中"; setModelFeedback("正在调用 Windows 系统加密服务…"); try { const result = await configureRuntime(config); localStorage.removeItem("ai-software-team.model-settings"); event.currentTarget.apiKey.value = ""; applyModelSettings(result); setModelFeedback("保存成功，关闭并重新打开软件后仍可使用", "success"); eventLog.unshift(`灵灵已保存并连接 ${config.model}`); render(); } catch (error) { const status = await window.desktop?.getModelStatus?.().catch(() => null); if (status) setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"); setModelFeedback(`保存失败：${error.message}`, "error"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } finally { button.disabled = false; button.textContent = "保存连接配置"; } });
+document.querySelector("#test-api-button").addEventListener("click", async () => { const button = document.querySelector("#test-api-button"); button.disabled = true; button.textContent = "测试中"; setModelFeedback("正在保存当前配置并测试模型响应…"); try { const config = getModelFormConfig(); const configured = await configureRuntime(config); document.querySelector("#model-settings-form").apiKey.value = ""; applyModelSettings(configured); const result = await window.desktop.testModel(); setRuntimeState(true, `${configured.model} 已连接`); setModelFeedback(`连接测试成功：${result.message}`, "success"); eventLog.unshift(`连接测试成功：${result.message}`); } catch (error) { setModelFeedback(`连接测试失败：${error.message}`, "error"); eventLog.unshift(`连接测试失败：${error.message}`); } finally { button.disabled = false; button.textContent = "测试连接"; renderOrchestrator(); } });
+document.querySelector("#clear-api-button").addEventListener("click", async () => { try { await window.desktop?.clearModel?.(); localStorage.removeItem("ai-software-team.model-settings"); sessionStorage.removeItem("ai-software-team.model-settings"); const form = document.querySelector("#model-settings-form"); form.reset(); form.apiKey.placeholder = "输入密钥"; document.querySelector("#api-key-hint").textContent = "密钥将由 Windows 系统加密后保存在本机"; applyProviderDefaults(); setRuntimeState(false, "模型待配置"); setModelFeedback("已删除本机保存的模型配置", "success"); } catch (error) { setModelFeedback(`清除失败：${error.message}`, "error"); } });
 
 const memoryDialog = document.querySelector("#memory-dialog");
 document.querySelector("#new-memory-button").addEventListener("click", () => memoryDialog.showModal());
@@ -451,6 +529,5 @@ setInterval(() => { managerLine = (managerLine + 1) % managerLines.length; docum
 setInterval(() => renderOffice(), 3000);
 
 loadModelSettings(); renderSkills(); renderChat(); render();
-window.desktop?.getModelStatus?.().then((status) => setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"));
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));

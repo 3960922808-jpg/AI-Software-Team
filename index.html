@@ -14,6 +14,7 @@
         <nav aria-label="主导航">
           <button class="nav-item active" type="button" data-view="projects"><span>▦</span>Agent 工作室</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
+          <button class="nav-item" type="button" data-view="audit"><span>✓</span>运行与审计</button>
           <button class="nav-item" type="button" data-view="memory"><span>◇</span>记忆与知识库</button>
           <button class="nav-item" type="button" data-view="settings"><span>⚙</span>模型与 API</button>
           <button class="nav-item" type="button" data-view="skills"><span>⌘</span>技能中心</button>
@@ -57,21 +58,28 @@
           <section class="memory-layout"><section class="memory-panel"><header class="panel-heading"><div><p class="eyebrow">Project Memory</p><h2>项目记忆</h2></div><span class="count" id="memory-count">0</span></header><div id="memory-list" class="memory-list"></div></section><section class="knowledge-panel"><header class="panel-heading"><div><p class="eyebrow">Knowledge Base</p><h2>知识文档</h2></div><input class="knowledge-search" id="knowledge-search" type="search" placeholder="搜索标题或内容" /></header><div id="knowledge-list" class="knowledge-list"></div></section></section>
         </section>
         <section class="view" data-view-panel="settings">
-          <header class="topbar"><div><p class="eyebrow">Model Layer</p><h1>模型与 API 配置</h1></div><span class="session-label">仅当前会话</span></header>
+          <header class="topbar"><div><p class="eyebrow">Model Layer</p><h1>模型与 API 配置</h1></div><span class="session-label">Windows 系统加密保存</span></header>
           <section class="settings-layout">
             <form class="settings-form" id="model-settings-form">
               <div class="panel-heading"><div><p class="eyebrow">连接配置</p><h2>主模型</h2></div><span class="connection-state" id="connection-state">未配置</span></div>
-              <div class="settings-fields"><label>模型提供商<select name="provider" id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google AI</option><option value="deepseek">DeepSeek</option><option value="custom">兼容 OpenAI 的自定义服务</option></select></label><label>API Base URL<input name="baseUrl" id="base-url" type="url" required placeholder="https://api.openai.com/v1" /></label><label>模型名称<input name="model" required placeholder="例如：gpt-4.1-mini" /></label><label>API Key<input name="apiKey" type="password" autocomplete="off" placeholder="仅保存在当前应用会话" /></label><label class="workspace-setting">Agent 产物工作目录<div><input id="workspace-path" type="text" readonly placeholder="尚未选择，仅生成文本结果" /><button class="secondary-button" id="settings-workspace-button" type="button">选择目录</button></div><small>生成文件写入 .ai-team-output，不覆盖原项目</small></label></div>
-              <div class="setting-actions"><button class="secondary-button" id="clear-api-button" type="button">清除会话密钥</button><button class="secondary-button" id="test-api-button" type="button">测试连接</button><button class="primary-button" type="submit">保存连接配置</button></div>
+              <div class="settings-fields"><label>模型提供商<select name="provider" id="provider-select"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="google">Google AI</option><option value="deepseek">DeepSeek</option><option value="custom">兼容 OpenAI 的自定义服务</option></select></label><label>API Base URL<input name="baseUrl" id="base-url" type="url" required placeholder="https://api.openai.com/v1" /></label><label>模型名称<input name="model" required placeholder="例如：gpt-4.1-mini" /></label><label>API Key<input name="apiKey" type="password" autocomplete="off" placeholder="输入密钥" /><small class="field-hint" id="api-key-hint">密钥将由 Windows 系统加密后保存在本机</small></label><label class="workspace-setting">Agent 产物工作目录<div><input id="workspace-path" type="text" readonly placeholder="尚未选择，仅生成文本结果" /><button class="secondary-button" id="settings-workspace-button" type="button">选择目录</button></div><small>生成文件写入 .ai-team-output，不覆盖原项目</small></label></div>
+              <div class="model-save-feedback" id="model-save-feedback" role="status">填写配置后保存，重启软件仍可继续使用</div><div class="setting-actions"><button class="secondary-button" id="clear-api-button" type="button">清除已保存配置</button><button class="secondary-button" id="test-api-button" type="button">测试连接</button><button class="primary-button" id="save-model-button" type="submit">保存连接配置</button></div>
             </form>
             <section class="commander-panel"><header class="panel-heading"><div><p class="eyebrow">层级调度</p><h2>指挥 Agent</h2></div><span class="agent-total">已启用</span></header><div class="commander-content"><div class="commander-mark">CO</div><h3>总控编排 Agent</h3><p>分析目标、选择模型与子 Agent，合并执行结果并回传项目经理。</p><label>调度策略<select id="routing-mode"><option value="balanced">均衡分派</option><option value="quality">质量优先</option><option value="speed">速度优先</option></select></label><div class="delegation-map"><span>指挥 Agent</span><b>↓</b><span>专业子 Agent</span><b>↓</b><span>执行结果与审计</span></div></div></section>
           </section>
-          <p class="security-note">安全提示：前端不会将密钥提交、同步或写入本地持久化存储。生产环境应由后端通过环境变量或密钥管理服务持有密钥。</p>
+          <p class="security-note">安全提示：API Key 不会进入前端存储、任务数据或项目仓库，只会由 Electron 主进程调用 Windows 系统加密服务后保存在当前电脑。</p>
         </section>
         <section class="view" data-view-panel="skills">
           <header class="topbar"><div><p class="eyebrow">Skill System</p><h1>Agent 技能中心</h1></div><span class="session-label" id="skills-summary">0 项技能已启用</span></header>
           <section class="skills-intro"><div><p class="eyebrow">专属能力</p><h2>为每个 Agent 配置可审计的工作技能</h2><p>技能决定 Agent 可以执行的操作范围。指挥 Agent 只负责任务分解和分派，专业 Agent 仅使用其被授权的专属 Skill。</p></div></section>
           <section class="skills-grid" id="skills-grid"></section>
+        </section>
+        <section class="view" data-view-panel="audit">
+          <header class="topbar audit-topbar"><div><p class="eyebrow">运行审计</p><h1>运行与审计中心</h1></div><div class="header-actions"><button class="secondary-button" id="refresh-audit-button" type="button">刷新</button><button class="primary-button" id="export-audit-button" type="button">导出审计报告</button></div></header>
+          <section class="audit-summary"><article><span>任务执行</span><strong id="audit-run-count">0</strong></article><article><span>成功率</span><strong id="audit-success-rate">0%</strong></article><article><span>子智能体步骤</span><strong id="audit-step-count">0</strong></article><article><span>交付产物</span><strong id="audit-artifact-count">0</strong></article></section>
+          <section class="audit-toolbar"><label>记录类型<select id="audit-kind-filter"><option value="all">全部记录</option><option value="任务">任务执行</option><option value="部署">部署记录</option></select></label><label>执行状态<select id="audit-status-filter"><option value="all">全部状态</option><option value="成功">成功</option><option value="失败">失败</option><option value="执行中">执行中</option><option value="等待">等待</option></select></label><label class="audit-search-label">搜索记录<input id="audit-search" type="search" placeholder="任务、智能体或结果" /></label><span class="session-label" id="audit-result-count">0 条记录</span></section>
+          <section class="audit-list" id="audit-list"><p class="empty-state">暂无运行记录</p></section>
+          <p class="audit-export-state" id="audit-export-state" role="status">审计数据来自真实任务执行、子智能体步骤、产物和部署记录</p>
         </section>
         <section class="view" data-view-panel="integrations">
           <header class="topbar integrations-topbar"><div><p class="eyebrow">外部能力</p><h1>联网与工具连接</h1></div><div class="header-actions"><span class="runtime-pill" id="integration-status"><span class="status-dot"></span><span>公开访问模式</span></span><button class="secondary-button" id="clear-resources-button" type="button">清空资源</button></div></header>

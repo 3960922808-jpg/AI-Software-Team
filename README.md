@@ -10,7 +10,8 @@
 - 浏览器 `localStorage` 数据持久化
 - Agent 注册表、任务执行队列与调度事件记录
 - 项目任务与调度中心实时联动，支持一键启动下一项待处理任务
-- 主模型的提供商、Base URL、模型名称和会话级 API Key 配置
+- 主模型的提供商、Base URL、模型名称和 API Key 配置
+- 模型配置可跨重启恢复，API Key 由 Electron 主进程调用 Windows 系统加密服务后保存在本机
 - 指挥 Agent 的调度策略，以及 10 个专业 Agent 的专属 Skill 开关
 - 主 Agent 真实拆解 1-6 个子任务，多专业 Agent 按各自 Skill 执行，主 Agent 最终审查汇总
 - 可选本地工作目录，生成文件安全写入 `.ai-team-output`，不会覆盖原项目
@@ -19,6 +20,7 @@
 - 发布前评审可调用运维、测试、安全与代码审查 Agent 完成联合检查
 - 联网与外部能力：安全读取公开网页、GitHub 仓库元数据和文件树，并注入智能体任务上下文
 - 外部连接限制为公开 HTTPS 地址，拒绝本机与局域网目标，令牌仅保存在运行内存
+- 运行与审计中心：汇总任务、子 Agent 步骤、产物与部署记录，支持状态筛选和 JSON 报告导出
 
 ## Electron Windows 桌面版
 
@@ -42,7 +44,7 @@ pnpm build:windows
 双击 `start-windows-app.cmd` 可启动 PowerShell/WPF 兼容客户端。正式发布版本使用 Electron 安装包。
 
 - 本地任务数据：`%APPDATA%\AI Software Team\workspace.json`
-- API Key：仅保留在应用运行内存中，关闭程序即清除
+- API Key：由 Electron 主进程调用 Windows 系统加密服务后保存在本机，前端无法读取明文
 - 功能页面：项目工作台、智能调度中心、模型与 API、Agent 技能中心
 - 记忆与知识库：项目记忆、文档导入、本地检索与删除
 - 真实模型运行时：支持 OpenAI、Anthropic、Google AI、DeepSeek 和兼容 OpenAI 的服务
@@ -54,7 +56,7 @@ pnpm build:windows
 - 常驻灵灵 AI 对话框，可结合任务、记忆和知识库进行对话
 - 新安装不再自动创建任何示例项目、任务或知识文档
 
-API Key 只存在 Electron 主进程内存中，不会写入任务数据、配置文件或 Git 仓库。
+API Key 不会写入前端存储、任务数据或 Git 仓库。持久化文件只包含由 Windows 系统加密后的密文，并保存在 Electron 用户数据目录。
 
 `build-windows-exe.ps1` 是独立 `.exe` 构建脚本，需要在安装 Python 和 PyInstaller 的构建环境中执行。
 
@@ -70,10 +72,10 @@ python -m http.server 8080
 
 ## 后续板块
 
-1. Agent Orchestrator：任务路由、执行队列、Agent 状态与审计记录。
-2. 专业 Agent：产品、架构、研发、测试、安全与 DevOps 的标准化工具契约。
-3. 记忆与知识：项目上下文、向量检索和 RAG。
-4. 交付平台：CI/CD、部署、监控与告警。
+1. 模型池：为主 Agent 和专业子 Agent 分配不同模型与独立连接。
+2. 工具执行：受控终端、代码编辑、测试与构建工具契约。
+3. 记忆增强：向量检索、分段索引和可追溯引用。
+4. 运行监控：任务耗时、令牌统计、告警与失败重试。
 
 > 不要将 GitHub Token、模型 API Key 或任何密钥提交到仓库；使用本机环境变量或密钥管理服务。
 

@@ -1,9 +1,27 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
 const deliveryRuntime = require("./delivery-runtime");
 const integrationRuntime = require("./integration-runtime");
+const { createModelSettingsStore } = require("./model-settings-store");
+
+let modelSettingsStore = null;
+
+if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
+
+function initializeModelSettings() {
+  modelSettingsStore = createModelSettingsStore({
+    filePath: path.join(app.getPath("userData"), "model-settings.json"),
+    encrypt: (value) => {
+      if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows 系统加密服务当前不可用，无法安全保存 API Key");
+      return safeStorage.encryptString(value).toString("base64");
+    },
+    decrypt: (value) => safeStorage.decryptString(Buffer.from(value, "base64")),
+  });
+  const saved = modelSettingsStore.load();
+  if (saved) modelRuntime.configure(saved);
+}
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -72,12 +90,38 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.whenReady().then(() => {
+    try { initializeModelSettings(); }
+    catch (error) { console.error(`恢复模型配置失败：${error.message}`); }
     if (process.env.AI_TEAM_SCREENSHOT_WORKSPACE) modelRuntime.setWorkspace(process.env.AI_TEAM_SCREENSHOT_WORKSPACE);
     ipcMain.handle("app:get-info", () => ({ version: app.getVersion(), platform: process.platform }));
-    ipcMain.handle("model:configure", (_event, config) => modelRuntime.configure(config));
-    ipcMain.handle("model:clear", () => modelRuntime.clear());
-    ipcMain.handle("model:status", () => modelRuntime.status());
+    ipcMain.handle("model:configure", (_event, config) => {
+      if (!modelSettingsStore) initializeModelSettings();
+      const previous = modelSettingsStore.load();
+      const merged = modelSettingsStore.merge(config);
+      const result = modelRuntime.configure(merged);
+      try { modelSettingsStore.persist(merged); }
+      catch (error) {
+        if (previous) modelRuntime.configure(previous); else modelRuntime.clear();
+        throw error;
+      }
+      return { ...result, ...modelSettingsStore.status() };
+    });
+    ipcMain.handle("model:clear", () => {
+      modelRuntime.clear();
+      modelSettingsStore?.clear();
+      return { configured: false, persisted: false, apiKeyConfigured: false };
+    });
+    ipcMain.handle("model:status", () => modelSettingsStore?.status() || modelRuntime.status());
     ipcMain.handle("model:test", () => modelRuntime.testConnection());
+    ipcMain.handle("audit:export", async (_event, payload) => {
+      const content = `${JSON.stringify(payload, null, 2)}\n`;
+      if (Buffer.byteLength(content, "utf8") > 5 * 1024 * 1024) throw new Error("审计报告超过 5MB 限制");
+      const date = new Date().toISOString().slice(0, 10);
+      const result = await dialog.showSaveDialog({ title: "导出运行审计报告", defaultPath: `AI-Team-运行审计-${date}.json`, filters: [{ name: "JSON 审计报告", extensions: ["json"] }] });
+      if (result.canceled || !result.filePath) return { canceled: true };
+      fs.writeFileSync(result.filePath, content, "utf8");
+      return { canceled: false, path: result.filePath, bytes: Buffer.byteLength(content, "utf8") };
+    });
     ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask(payload));
     ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat(payload));
     ipcMain.handle("workspace:get", () => modelRuntime.getWorkspace());
