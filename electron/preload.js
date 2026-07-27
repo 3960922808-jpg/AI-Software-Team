@@ -11,5 +11,8 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   chat: (payload) => ipcRenderer.invoke("agent:chat", payload),
   getWorkspace: () => ipcRenderer.invoke("workspace:get"),
   setWorkspace: (selectedPath) => ipcRenderer.invoke("workspace:set", selectedPath),
-  chooseWorkspace: () => ipcRenderer.invoke("workspace:choose")
+  chooseWorkspace: () => ipcRenderer.invoke("workspace:choose"),
+  inspectDelivery: () => ipcRenderer.invoke("delivery:inspect"),
+  createDeliveryRelease: (payload) => ipcRenderer.invoke("delivery:create", payload),
+  openDeliveryPath: (selectedPath) => ipcRenderer.invoke("delivery:open", selectedPath)
 }));

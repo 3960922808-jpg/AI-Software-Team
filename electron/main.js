@@ -2,11 +2,12 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
+const deliveryRuntime = require("./delivery-runtime");
 
 const createWindow = () => {
   const window = new BrowserWindow({
-    width: 1380,
-    height: 860,
+    width: Number(process.env.AI_TEAM_WINDOW_WIDTH) || 1380,
+    height: Number(process.env.AI_TEAM_WINDOW_HEIGHT) || 860,
     minWidth: 1040,
     minHeight: 680,
     show: false,
@@ -28,8 +29,8 @@ const createWindow = () => {
       await window.webContents.executeJavaScript(`(() => {
         const requestedView = ${JSON.stringify(process.env.AI_TEAM_SCREENSHOT_VIEW || "projects")};
         if (requestedView !== 'projects') {
-          document.querySelector('[data-open-view="' + requestedView + '"]')?.click();
-          document.querySelector('[data-view="' + requestedView + '"]')?.click();
+          document.querySelectorAll('[data-view]').forEach((item) => item.classList.toggle('active', item.dataset.view === requestedView));
+          document.querySelectorAll('[data-view-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.viewPanel === requestedView));
           const panel = document.querySelector('[data-view-panel="' + requestedView + '"]');
           if (!panel?.classList.contains('active')) throw new Error('Requested view did not open');
           return;
@@ -41,7 +42,15 @@ const createWindow = () => {
         if (menu.hidden || getComputedStyle(menu).display === 'none' || bounds.width < 200) throw new Error('Agent context menu did not open');
         menu.style.outline = '3px solid #d34b4b';
       })()`);
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await new Promise((resolve) => setTimeout(resolve, process.env.AI_TEAM_SCREENSHOT_VIEW ? 800 : 250));
+      if (process.env.AI_TEAM_SCREENSHOT_VIEW && process.env.AI_TEAM_SCREENSHOT_VIEW !== "projects") {
+        await window.webContents.executeJavaScript(`(() => {
+          const requestedView = ${JSON.stringify(process.env.AI_TEAM_SCREENSHOT_VIEW)};
+          document.querySelectorAll('[data-view]').forEach((item) => item.classList.toggle('active', item.dataset.view === requestedView));
+          document.querySelectorAll('[data-view-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.viewPanel === requestedView));
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
       const image = await window.webContents.capturePage();
       fs.writeFileSync(process.env.AI_TEAM_SCREENSHOT, image.toPNG());
       app.quit();
@@ -60,6 +69,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.whenReady().then(() => {
+    if (process.env.AI_TEAM_SCREENSHOT_WORKSPACE) modelRuntime.setWorkspace(process.env.AI_TEAM_SCREENSHOT_WORKSPACE);
     ipcMain.handle("app:get-info", () => ({ version: app.getVersion(), platform: process.platform }));
     ipcMain.handle("model:configure", (_event, config) => modelRuntime.configure(config));
     ipcMain.handle("model:clear", () => modelRuntime.clear());
@@ -72,6 +82,14 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("workspace:choose", async () => {
       const result = await dialog.showOpenDialog({ title: "选择 Agent 产物工作目录", properties: ["openDirectory", "createDirectory"] });
       return result.canceled ? modelRuntime.getWorkspace() : modelRuntime.setWorkspace(result.filePaths[0]);
+    });
+    ipcMain.handle("delivery:inspect", () => deliveryRuntime.inspect(modelRuntime.getWorkspace().path));
+    ipcMain.handle("delivery:create", (_event, payload) => deliveryRuntime.createRelease(modelRuntime.getWorkspace().path, payload));
+    ipcMain.handle("delivery:open", async (_event, candidate) => {
+      const target = deliveryRuntime.resolveOutputPath(modelRuntime.getWorkspace().path, candidate);
+      const error = await shell.openPath(target);
+      if (error) throw new Error(error);
+      return { opened: true, path: target };
     });
     createWindow();
     app.on("activate", () => {

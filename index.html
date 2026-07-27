@@ -17,7 +17,7 @@
           <button class="nav-item" type="button" data-view="memory"><span>◇</span>记忆与知识库</button>
           <button class="nav-item" type="button" data-view="settings"><span>⚙</span>模型与 API</button>
           <button class="nav-item" type="button" data-view="skills"><span>⌘</span>技能中心</button>
-          <button class="nav-item" type="button" disabled><span>↗</span>交付与部署</button>
+          <button class="nav-item" type="button" data-view="delivery"><span>↗</span>交付与部署</button>
         </nav>
         <div class="sidebar-footer"><span class="status-dot"></span>项目经理 Agent 在线</div>
       </aside>
@@ -71,6 +71,29 @@
           <header class="topbar"><div><p class="eyebrow">Skill System</p><h1>Agent 技能中心</h1></div><span class="session-label" id="skills-summary">0 项技能已启用</span></header>
           <section class="skills-intro"><div><p class="eyebrow">专属能力</p><h2>为每个 Agent 配置可审计的工作技能</h2><p>技能决定 Agent 可以执行的操作范围。指挥 Agent 只负责任务分解和分派，专业 Agent 仅使用其被授权的专属 Skill。</p></div></section>
           <section class="skills-grid" id="skills-grid"></section>
+        </section>
+        <section class="view" data-view-panel="delivery">
+          <header class="topbar delivery-topbar"><div><p class="eyebrow">交付中心</p><h1>交付与部署</h1></div><div class="header-actions"><button class="secondary-button" id="open-delivery-button" type="button">打开交付目录</button><button class="secondary-button" id="refresh-delivery-button" type="button">重新检查</button><button class="primary-button" id="agent-release-review-button" type="button">智能体发布评审</button></div></header>
+          <section class="delivery-summary">
+            <div><span>项目</span><strong id="delivery-project">等待选择目录</strong></div>
+            <div><span>项目类型</span><strong id="delivery-project-type">未识别</strong></div>
+            <div><span>已校验产物</span><strong id="delivery-artifact-count">0</strong></div>
+            <div><span>交付状态</span><strong id="delivery-readiness">等待检查</strong></div>
+          </section>
+          <section class="delivery-pipeline" aria-label="交付流程">
+            <div><b>1</b><span>项目检查</span></div><i></i><div><b>2</b><span>智能体评审</span></div><i></i><div><b>3</b><span>版本候选</span></div><i></i><div><b>4</b><span>部署记录</span></div>
+          </section>
+          <section class="delivery-layout">
+            <form class="delivery-panel release-form" id="release-form">
+              <header class="panel-heading"><div><p class="eyebrow">版本候选</p><h2>生成交付清单</h2></div><span class="connection-state" id="release-form-state">未生成</span></header>
+              <div class="delivery-form-fields"><label>版本号<input name="version" required maxlength="40" placeholder="例如：v1.0.0" /></label><label>发布通道<select name="channel"><option>测试</option><option>预发布</option><option>生产</option></select></label><label class="wide-field">发布说明<textarea name="notes" maxlength="12000" placeholder="记录本次变更、验证结果和已知风险"></textarea></label></div>
+              <footer><button class="primary-button" type="submit">生成清单与发布说明</button></footer>
+            </form>
+            <section class="delivery-panel checks-panel"><header class="panel-heading"><div><p class="eyebrow">发布门禁</p><h2>交付检查</h2></div><span class="count" id="delivery-check-count">0/4</span></header><div class="delivery-checks" id="delivery-checks"><p class="empty-state">选择工作目录后开始检查</p></div></section>
+            <section class="delivery-panel artifacts-panel"><header class="panel-heading"><div><p class="eyebrow">文件校验</p><h2>智能体产物</h2></div><span class="session-label" id="delivery-scan-time">尚未扫描</span></header><div class="artifact-table-wrap"><table class="artifact-table"><thead><tr><th>文件</th><th>大小</th><th>校验值</th><th>修改时间</th></tr></thead><tbody id="delivery-artifacts"><tr><td colspan="4">暂无交付产物</td></tr></tbody></table></div></section>
+            <form class="delivery-panel deployment-form" id="deployment-form"><header class="panel-heading"><div><p class="eyebrow">环境记录</p><h2>登记部署结果</h2></div></header><div class="deployment-fields"><label>环境<select name="environment"><option>测试</option><option>预发布</option><option>生产</option></select></label><label>结果<select name="status"><option>成功</option><option>失败</option><option>已回滚</option></select></label><label>访问地址<input name="url" type="url" placeholder="https://example.com" /></label><label>说明<input name="note" maxlength="160" placeholder="版本、验证结果或故障说明" /></label></div><footer><button class="secondary-button" type="submit">保存部署记录</button></footer></form>
+            <section class="delivery-panel deployment-history-panel"><header class="panel-heading"><div><p class="eyebrow">审计记录</p><h2>部署历史</h2></div><span class="count" id="deployment-count">0</span></header><div class="deployment-history" id="deployment-history"><p class="empty-state">暂无部署记录</p></div></section>
+          </section>
         </section>
       </section>
     </main>
