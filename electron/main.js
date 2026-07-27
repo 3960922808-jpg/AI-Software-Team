@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
 const deliveryRuntime = require("./delivery-runtime");
+const integrationRuntime = require("./integration-runtime");
 
 const createWindow = () => {
   const window = new BrowserWindow({
@@ -35,12 +36,14 @@ const createWindow = () => {
           if (!panel?.classList.contains('active')) throw new Error('Requested view did not open');
           return;
         }
-        const pet = document.querySelector('.agent-pet');
-        pet.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 520, clientY: 330 }));
-        const menu = document.querySelector('#agent-context-menu');
-        const bounds = menu.getBoundingClientRect();
-        if (menu.hidden || getComputedStyle(menu).display === 'none' || bounds.width < 200) throw new Error('Agent context menu did not open');
-        menu.style.outline = '3px solid #d34b4b';
+        if (${JSON.stringify(process.env.AI_TEAM_SCREENSHOT_CONTEXT_MENU || "1")} !== '0') {
+          const pet = document.querySelector('.agent-pet');
+          pet.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 520, clientY: 330 }));
+          const menu = document.querySelector('#agent-context-menu');
+          const bounds = menu.getBoundingClientRect();
+          if (menu.hidden || getComputedStyle(menu).display === 'none' || bounds.width < 200) throw new Error('Agent context menu did not open');
+          menu.style.outline = '3px solid #d34b4b';
+        }
       })()`);
       await new Promise((resolve) => setTimeout(resolve, process.env.AI_TEAM_SCREENSHOT_VIEW ? 800 : 250));
       if (process.env.AI_TEAM_SCREENSHOT_VIEW && process.env.AI_TEAM_SCREENSHOT_VIEW !== "projects") {
@@ -91,6 +94,11 @@ if (!app.requestSingleInstanceLock()) {
       if (error) throw new Error(error);
       return { opened: true, path: target };
     });
+    ipcMain.handle("integration:configure", (_event, payload) => integrationRuntime.configure(payload));
+    ipcMain.handle("integration:clear", () => integrationRuntime.clear());
+    ipcMain.handle("integration:status", () => integrationRuntime.status());
+    ipcMain.handle("integration:fetch-document", (_event, url) => integrationRuntime.fetchDocument(url));
+    ipcMain.handle("integration:inspect-repository", (_event, repository) => integrationRuntime.inspectRepository(repository));
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
