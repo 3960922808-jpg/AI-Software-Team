@@ -10,6 +10,37 @@ let modelSettingsStore = null;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
 
+const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const startupMinimumDuration = Math.max(1200, Number(process.env.AI_TEAM_STARTUP_MIN_MS) || 2200);
+
+async function updateSplash(splashWindow, progress, message) {
+  if (!splashWindow || splashWindow.isDestroyed()) return;
+  try { await splashWindow.webContents.executeJavaScript(`window.setStartupProgress?.(${Number(progress)}, ${JSON.stringify(message)})`); }
+  catch { /* 启动页关闭时忽略迟到的进度更新。 */ }
+}
+
+async function createSplashWindow() {
+  const splashWindow = new BrowserWindow({
+    width: 960,
+    height: 514,
+    frame: false,
+    resizable: false,
+    movable: true,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    show: false,
+    center: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: "#f2f2f6",
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  });
+  await splashWindow.loadFile(path.join(__dirname, "..", "splash.html"));
+  splashWindow.show();
+  return splashWindow;
+}
+
 function initializeModelSettings() {
   modelSettingsStore = createModelSettingsStore({
     filePath: path.join(app.getPath("userData"), "model-settings.json"),
@@ -23,7 +54,7 @@ function initializeModelSettings() {
   if (saved) modelRuntime.configure(saved);
 }
 
-const createWindow = () => {
+const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
   const window = new BrowserWindow({
     width: Number(process.env.AI_TEAM_WINDOW_WIDTH) || 1380,
     height: Number(process.env.AI_TEAM_WINDOW_HEIGHT) || 860,
@@ -42,7 +73,17 @@ const createWindow = () => {
   });
 
   window.loadFile(path.join(__dirname, "..", "index.html"));
-  window.once("ready-to-show", () => window.show());
+  window.once("ready-to-show", async () => {
+    if (!splashWindow || splashWindow.isDestroyed()) { window.show(); return; }
+    await updateSplash(splashWindow, 92, "正在准备工作台界面");
+    await delay(Math.max(0, startupMinimumDuration - (Date.now() - startupStartedAt)));
+    if (!splashWindow.isDestroyed()) {
+      try { await splashWindow.webContents.executeJavaScript("window.finishStartup?.()"); } catch { /* 启动页可能已经关闭。 */ }
+      await delay(620);
+      if (!splashWindow.isDestroyed()) splashWindow.close();
+    }
+    window.show();
+  });
   if (process.env.AI_TEAM_SCREENSHOT) {
     window.webContents.once("did-finish-load", async () => {
       await window.webContents.executeJavaScript(`(() => {
@@ -84,14 +125,23 @@ const createWindow = () => {
   window.webContents.on("will-navigate", (event, url) => {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
+  return window;
 };
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    const startupStartedAt = Date.now();
+    let splashWindow = null;
+    if (!process.env.AI_TEAM_SCREENSHOT) {
+      try { splashWindow = await createSplashWindow(); }
+      catch (error) { console.error(`启动页加载失败：${error.message}`); }
+    }
+    await updateSplash(splashWindow, 24, "正在恢复模型与安全配置");
     try { initializeModelSettings(); }
     catch (error) { console.error(`恢复模型配置失败：${error.message}`); }
+    await updateSplash(splashWindow, 46, "正在加载智能体与专属技能");
     if (process.env.AI_TEAM_SCREENSHOT_WORKSPACE) modelRuntime.setWorkspace(process.env.AI_TEAM_SCREENSHOT_WORKSPACE);
     ipcMain.handle("app:get-info", () => ({ version: app.getVersion(), platform: process.platform }));
     ipcMain.handle("model:configure", (_event, config) => {
@@ -143,7 +193,8 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("integration:status", () => integrationRuntime.status());
     ipcMain.handle("integration:fetch-document", (_event, url) => integrationRuntime.fetchDocument(url));
     ipcMain.handle("integration:inspect-repository", (_event, repository) => integrationRuntime.inspectRepository(repository));
-    createWindow();
+    await updateSplash(splashWindow, 72, "正在连接任务、记忆与审计中心");
+    createWindow(splashWindow, startupStartedAt);
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });

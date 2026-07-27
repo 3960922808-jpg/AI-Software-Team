@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>SoftwareTeam 正在启动</title>
+    <link rel="stylesheet" href="splash.css" />
+  </head>
+  <body>
+    <main class="splash-shell" aria-label="SoftwareTeam 正在启动">
+      <img class="splash-art" src="assets/splash/startup.jpg" alt="" />
+      <div class="progress-track" role="progressbar" aria-label="启动进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8">
+        <div class="progress-fill"><i></i></div>
+      </div>
+      <div class="progress-meta"><span id="startup-status">正在唤醒软件团队</span><strong id="startup-percent">8%</strong></div>
+    </main>
+    <script src="splash.js"></script>
+  </body>
+</html>

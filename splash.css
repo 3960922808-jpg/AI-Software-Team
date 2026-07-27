@@ -1,0 +1,19 @@
+:root { color-scheme:light; --startup-progress:8%; }
+* { box-sizing:border-box; }
+html,body { width:100%; height:100%; margin:0; overflow:hidden; background:#f2f2f6; }
+body { color:#171719; font-family:"Microsoft YaHei UI","Segoe UI",sans-serif; user-select:none; -webkit-app-region:drag; }
+.splash-shell { position:relative; width:100%; height:100%; overflow:hidden; background:#f2f2f6; }
+.splash-art { display:block; width:100%; height:100%; object-fit:cover; pointer-events:none; }
+.progress-track { position:absolute; left:22.9%; top:58.65%; width:52.25%; height:5.75%; overflow:hidden; border:1px solid rgba(255,255,255,.72); border-radius:999px; background:rgba(255,255,255,.2); box-shadow:inset 0 1px 3px rgba(255,255,255,.9),0 8px 24px rgba(30,30,38,.07); backdrop-filter:blur(14px); }
+.progress-fill { position:absolute; inset:3px auto 3px 3px; width:calc(var(--startup-progress) - 6px); min-width:8px; overflow:hidden; border-radius:999px; background:rgba(25,25,28,.84); box-shadow:0 4px 14px rgba(25,25,28,.16); transition:width .55s cubic-bezier(.22,.78,.22,1); }
+.progress-fill::before { content:""; position:absolute; inset:0; border:1px solid rgba(255,255,255,.14); border-radius:inherit; }
+.progress-fill::after { content:""; position:absolute; top:0; bottom:0; width:2px; background:rgba(255,255,255,.8); box-shadow:0 0 14px rgba(255,255,255,.95); animation:progressSweep 1.6s ease-in-out infinite; }
+.progress-fill i { position:absolute; right:7px; top:50%; width:7px; height:7px; border-radius:50%; background:#fff; box-shadow:0 0 0 3px rgba(255,255,255,.18); transform:translateY(-50%); }
+.progress-meta { position:absolute; left:23.15%; top:66.65%; display:flex; align-items:center; justify-content:space-between; width:54.35%; color:#55555c; font-size:12px; }
+.progress-meta span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.progress-meta strong { min-width:42px; color:#1c1c1f; font-size:12px; text-align:right; font-variant-numeric:tabular-nums; }
+body.is-complete .progress-fill { background:#101012; }
+body.is-complete .progress-fill::after { animation:none; }
+body.is-leaving .splash-shell { opacity:0; transform:scale(1.012); transition:opacity .42s ease,transform .42s ease; }
+@keyframes progressSweep { from { left:-12px; opacity:0; } 25% { opacity:1; } 75% { opacity:1; } to { left:calc(100% + 12px); opacity:0; } }
+@media (prefers-reduced-motion:reduce) { .progress-fill,.splash-shell { transition:none !important; }.progress-fill::after { animation:none; } }
