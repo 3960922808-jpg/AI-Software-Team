@@ -42,7 +42,7 @@ async function main() {
     assert.match(result.result, /验收结果/);
     const chat = await runtime.chat({ messages: [{ role: "user", content: "帮我实现并执行" }] });
     assert.equal(chat.action.type, "create_and_execute");
-    console.log("PASS main Agent -> 2 child Agents -> 2 artifacts -> final review -> chat action");
+    console.log("通过：主智能体拆解、两个子智能体执行、两个产物、最终验收与对话动作");
   } finally {
     server.close();
     fs.rmSync(tempWorkspace, { recursive: true, force: true });

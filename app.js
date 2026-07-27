@@ -2,7 +2,8 @@ const storageKeys = {
   tasks: "ai-software-team.tasks",
   agents: "ai-software-team.office-agents",
   memory: "ai-software-team.memory",
-  knowledge: "ai-software-team.knowledge"
+  knowledge: "ai-software-team.knowledge",
+  deployments: "ai-software-team.deployments"
 };
 
 const roleAgents = [
@@ -57,6 +58,7 @@ if (!Array.isArray(tasks)) tasks = [];
 let officeAgents = loadJson(storageKeys.agents, defaultOfficeAgents);
 let memories = loadJson(storageKeys.memory, []);
 let knowledgeDocuments = loadJson(storageKeys.knowledge, []);
+let deploymentRecords = loadJson(storageKeys.deployments, []);
 if (!localStorage.getItem("ai-software-team.office-migration-v1")) {
   tasks = tasks.filter((task) => !["t1", "t2", "t3"].includes(task.id));
   memories = memories.filter((item) => item.id !== "m1");
@@ -78,10 +80,13 @@ let complaintAgentId = null;
 let complaintText = "";
 let chatMessages = [];
 let workspacePath = null;
+let deliveryReport = null;
+let lastReleasePath = null;
 
 function saveTasks() { localStorage.setItem(storageKeys.tasks, JSON.stringify(tasks)); }
 function saveAgents() { localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents)); }
 function saveMemory() { localStorage.setItem(storageKeys.memory, JSON.stringify(memories)); localStorage.setItem(storageKeys.knowledge, JSON.stringify(knowledgeDocuments)); }
+function saveDeployments() { localStorage.setItem(storageKeys.deployments, JSON.stringify(deploymentRecords)); }
 function escapeHtml(value) { const node = document.createElement("div"); node.textContent = value ?? ""; return node.innerHTML; }
 
 function getAgentStatus(agent) {
@@ -121,7 +126,52 @@ function render() {
   const completion = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   document.querySelector("#project-progress").value = completion;
   document.querySelector("#project-progress-label").textContent = `${completion}%`;
-  renderOffice(); renderOrchestrator(); renderMemory();
+  renderOffice(); renderOrchestrator(); renderMemory(); renderDeploymentHistory();
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} 字节`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} 千字节`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} 兆字节`;
+}
+
+function renderDeliveryReport(report) {
+  deliveryReport = report;
+  document.querySelector("#delivery-project").textContent = report.project.name;
+  document.querySelector("#delivery-project-type").textContent = report.project.type;
+  document.querySelector("#delivery-artifact-count").textContent = report.artifacts.length;
+  document.querySelector("#delivery-readiness").textContent = report.ready ? "可创建版本" : "需要确认";
+  document.querySelector("#delivery-readiness").classList.toggle("ready", report.ready);
+  const passed = report.checks.filter((check) => check.status === "pass").length;
+  document.querySelector("#delivery-check-count").textContent = `${passed}/${report.checks.length}`;
+  document.querySelector("#delivery-checks").innerHTML = report.checks.map((check) => `<article class="delivery-check ${check.status}"><span>${check.status === "pass" ? "✓" : "!"}</span><div><strong>${escapeHtml(check.label)}</strong><small>${escapeHtml(check.detail)}</small></div></article>`).join("");
+  document.querySelector("#delivery-scan-time").textContent = `检查于 ${new Date(report.scannedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
+  document.querySelector("#delivery-artifacts").innerHTML = report.artifacts.length ? report.artifacts.map((file) => `<tr><td title="${escapeHtml(file.relativePath)}"><strong>${escapeHtml(file.name)}</strong><small>${escapeHtml(file.relativePath)}</small></td><td>${formatFileSize(file.size)}</td><td><code title="${file.sha256}">${file.sha256.slice(0, 12)}</code></td><td>${new Date(file.modifiedAt).toLocaleString("zh-CN")}</td></tr>`).join("") : '<tr><td colspan="4">暂无智能体文件产物</td></tr>';
+}
+
+function clearDeliveryReport(message = "选择工作目录后开始检查") {
+  deliveryReport = null;
+  document.querySelector("#delivery-project").textContent = "等待选择目录";
+  document.querySelector("#delivery-project-type").textContent = "未识别";
+  document.querySelector("#delivery-artifact-count").textContent = "0";
+  document.querySelector("#delivery-readiness").textContent = "等待检查";
+  document.querySelector("#delivery-check-count").textContent = "0/4";
+  document.querySelector("#delivery-checks").innerHTML = `<p class="empty-state">${escapeHtml(message)}</p>`;
+  document.querySelector("#delivery-artifacts").innerHTML = '<tr><td colspan="4">暂无交付产物</td></tr>';
+}
+
+async function refreshDelivery() {
+  if (!workspacePath || !window.desktop?.inspectDelivery) { clearDeliveryReport(); return; }
+  const button = document.querySelector("#refresh-delivery-button");
+  button.disabled = true; button.textContent = "检查中";
+  try { renderDeliveryReport(await window.desktop.inspectDelivery()); }
+  catch (error) { clearDeliveryReport(error.message); }
+  finally { button.disabled = false; button.textContent = "重新检查"; }
+}
+
+function renderDeploymentHistory() {
+  document.querySelector("#deployment-count").textContent = deploymentRecords.length;
+  document.querySelector("#deployment-history").innerHTML = deploymentRecords.length ? deploymentRecords.slice(0, 20).map((record) => `<article class="deployment-record"><span class="deployment-status ${record.status === "成功" ? "success" : "failure"}">${escapeHtml(record.status)}</span><div><strong>${escapeHtml(record.environment)} · ${escapeHtml(record.version || "未关联版本")}</strong><p>${escapeHtml(record.note || "未填写说明")}</p>${record.url ? `<a href="${escapeHtml(record.url)}" target="_blank" rel="noreferrer">${escapeHtml(record.url)}</a>` : ""}</div><time>${new Date(record.createdAt).toLocaleString("zh-CN")}</time></article>`).join("") : '<p class="empty-state">暂无部署记录</p>';
 }
 
 function renderOrchestrator() {
@@ -274,9 +324,43 @@ function setWorkspaceState(nextPath) {
   document.querySelector("#workspace-label").textContent = shortName;
   document.querySelector("#workspace-path").value = nextPath || "";
   document.querySelector("#chat-workspace-label").textContent = nextPath ? `产物目录：${shortName}` : "未选择工作目录";
+  if (nextPath) refreshDelivery(); else clearDeliveryReport();
 }
 document.querySelector("#workspace-button").addEventListener("click", chooseWorkspace);
 document.querySelector("#settings-workspace-button").addEventListener("click", chooseWorkspace);
+
+document.querySelector("#refresh-delivery-button").addEventListener("click", refreshDelivery);
+document.querySelector("#open-delivery-button").addEventListener("click", async () => {
+  try { await window.desktop?.openDeliveryPath?.(lastReleasePath || deliveryReport?.outputRoot); }
+  catch (error) { eventLog.unshift(`打开交付目录失败：${error.message}`); renderOrchestrator(); }
+});
+document.querySelector("#release-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  const data = new FormData(event.currentTarget);
+  button.disabled = true; button.textContent = "正在生成";
+  try {
+    const release = await window.desktop.createDeliveryRelease({ version: data.get("version"), channel: data.get("channel"), notes: data.get("notes") });
+    lastReleasePath = release.releasePath;
+    document.querySelector("#release-form-state").textContent = `${release.version} 已生成`;
+    document.querySelector("#release-form-state").classList.add("connected");
+    deploymentRecords.unshift({ id: crypto.randomUUID(), version: release.version, environment: release.channel, status: "候选已创建", note: `包含 ${release.artifactCount} 个校验产物`, url: "", createdAt: release.createdAt });
+    saveDeployments(); renderDeploymentHistory(); await refreshDelivery();
+  } catch (error) { document.querySelector("#release-form-state").textContent = error.message; }
+  finally { button.disabled = false; button.textContent = "生成清单与发布说明"; }
+});
+document.querySelector("#deployment-form").addEventListener("submit", (event) => {
+  event.preventDefault(); const data = new FormData(event.currentTarget);
+  const version = document.querySelector('#release-form [name="version"]').value.trim();
+  deploymentRecords.unshift({ id: crypto.randomUUID(), version, environment: data.get("environment"), status: data.get("status"), url: data.get("url").trim(), note: data.get("note").trim(), createdAt: new Date().toISOString() });
+  saveDeployments(); renderDeploymentHistory(); event.currentTarget.reset();
+});
+document.querySelector("#agent-release-review-button").addEventListener("click", async () => {
+  if (!deliveryReport) await refreshDelivery();
+  const project = deliveryReport?.project?.name || "当前项目";
+  const task = { id: crypto.randomUUID(), title: `发布前评审：${project}`.slice(0, 60), description: `对 ${project} 执行发布前联合评审。检查构建、自动化测试、安全风险、代码质量、回滚方案和交付产物完整性，输出明确的通过或阻断结论。`, agent: "DevOps Agent", priority: "high", status: "todo" };
+  tasks.unshift(task); saveTasks(); render(); activateView("orchestrator"); await executeNextTask(task.id);
+});
 
 document.querySelector("#skills-grid").addEventListener("change", (event) => { const skill = event.target.dataset.skill; if (!skill) return; event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills(); });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
