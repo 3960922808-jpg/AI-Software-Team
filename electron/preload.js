@@ -14,5 +14,10 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   chooseWorkspace: () => ipcRenderer.invoke("workspace:choose"),
   inspectDelivery: () => ipcRenderer.invoke("delivery:inspect"),
   createDeliveryRelease: (payload) => ipcRenderer.invoke("delivery:create", payload),
-  openDeliveryPath: (selectedPath) => ipcRenderer.invoke("delivery:open", selectedPath)
+  openDeliveryPath: (selectedPath) => ipcRenderer.invoke("delivery:open", selectedPath),
+  configureIntegrations: (payload) => ipcRenderer.invoke("integration:configure", payload),
+  clearIntegrations: () => ipcRenderer.invoke("integration:clear"),
+  getIntegrationStatus: () => ipcRenderer.invoke("integration:status"),
+  fetchDocument: (url) => ipcRenderer.invoke("integration:fetch-document", url),
+  inspectRepository: (repository) => ipcRenderer.invoke("integration:inspect-repository", repository)
 }));

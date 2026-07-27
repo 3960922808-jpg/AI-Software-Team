@@ -17,6 +17,7 @@
           <button class="nav-item" type="button" data-view="memory"><span>◇</span>记忆与知识库</button>
           <button class="nav-item" type="button" data-view="settings"><span>⚙</span>模型与 API</button>
           <button class="nav-item" type="button" data-view="skills"><span>⌘</span>技能中心</button>
+          <button class="nav-item" type="button" data-view="integrations"><span>⌕</span>联网与外部能力</button>
           <button class="nav-item" type="button" data-view="delivery"><span>↗</span>交付与部署</button>
         </nav>
         <div class="sidebar-footer"><span class="status-dot"></span>项目经理 Agent 在线</div>
@@ -71,6 +72,16 @@
           <header class="topbar"><div><p class="eyebrow">Skill System</p><h1>Agent 技能中心</h1></div><span class="session-label" id="skills-summary">0 项技能已启用</span></header>
           <section class="skills-intro"><div><p class="eyebrow">专属能力</p><h2>为每个 Agent 配置可审计的工作技能</h2><p>技能决定 Agent 可以执行的操作范围。指挥 Agent 只负责任务分解和分派，专业 Agent 仅使用其被授权的专属 Skill。</p></div></section>
           <section class="skills-grid" id="skills-grid"></section>
+        </section>
+        <section class="view" data-view-panel="integrations">
+          <header class="topbar integrations-topbar"><div><p class="eyebrow">外部能力</p><h1>联网与工具连接</h1></div><div class="header-actions"><span class="runtime-pill" id="integration-status"><span class="status-dot"></span><span>公开访问模式</span></span><button class="secondary-button" id="clear-resources-button" type="button">清空资源</button></div></header>
+          <section class="integration-summary"><div><span>代码仓库</span><strong id="repository-resource-count">0</strong></div><div><span>网页资料</span><strong id="document-resource-count">0</strong></div><div><span>上下文字符</span><strong id="resource-character-count">0</strong></div><div><span>安全策略</span><strong>仅公开 HTTPS</strong></div></section>
+          <section class="integration-layout">
+            <form class="integration-panel token-panel" id="integration-settings-form"><header class="panel-heading"><div><p class="eyebrow">访问凭据</p><h2>GitHub 连接</h2></div><span class="connection-state" id="github-token-state">未配置令牌</span></header><div class="integration-form-body"><label>访问令牌<input name="githubToken" type="password" autocomplete="off" placeholder="可选，仅保存在当前运行内存" /></label><p>公开仓库无需令牌。私有仓库或更高请求额度需要配置访问令牌。</p></div><footer><button class="secondary-button" id="clear-integration-token" type="button">清除令牌</button><button class="primary-button" type="submit">保存连接</button></footer></form>
+            <form class="integration-panel" id="repository-form"><header class="panel-heading"><div><p class="eyebrow">代码上下文</p><h2>读取 GitHub 仓库</h2></div></header><div class="integration-form-body"><label>仓库地址<input name="repository" required placeholder="owner/repository 或完整地址" /></label><p>读取仓库说明、默认分支、主要语言和最多五百个文件路径。</p></div><footer><button class="primary-button" type="submit">连接仓库</button></footer></form>
+            <form class="integration-panel" id="document-form"><header class="panel-heading"><div><p class="eyebrow">网页上下文</p><h2>读取公开资料</h2></div></header><div class="integration-form-body"><label>资料地址<input name="url" type="url" required placeholder="https://example.com/document" /></label><p>读取公开网页或文本资料，正文最多保留五万字符并进入智能体上下文。</p></div><footer><button class="primary-button" type="submit">读取资料</button></footer></form>
+          </section>
+          <section class="resources-section"><header class="section-heading"><div><p class="eyebrow">已连接资源</p><h2>智能体可用上下文</h2></div><span class="session-label" id="resource-updated-at">暂无资源</span></header><div class="external-resources" id="external-resources"><p class="empty-state">连接代码仓库或读取公开资料后，资源会显示在这里</p></div></section>
         </section>
         <section class="view" data-view-panel="delivery">
           <header class="topbar delivery-topbar"><div><p class="eyebrow">交付中心</p><h1>交付与部署</h1></div><div class="header-actions"><button class="secondary-button" id="open-delivery-button" type="button">打开交付目录</button><button class="secondary-button" id="refresh-delivery-button" type="button">重新检查</button><button class="primary-button" id="agent-release-review-button" type="button">智能体发布评审</button></div></header>

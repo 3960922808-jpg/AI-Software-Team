@@ -3,7 +3,8 @@ const storageKeys = {
   agents: "ai-software-team.office-agents",
   memory: "ai-software-team.memory",
   knowledge: "ai-software-team.knowledge",
-  deployments: "ai-software-team.deployments"
+  deployments: "ai-software-team.deployments",
+  externalResources: "ai-software-team.external-resources"
 };
 
 const roleAgents = [
@@ -22,10 +23,11 @@ const defaultOfficeAgents = [
   { id: "backend", name: "豆豆", role: "后端 Agent", sprite: "backend", desk: 2 },
   { id: "database", name: "桃桃", role: "数据库 Agent", sprite: "product", desk: 3 },
   { id: "tester", name: "琪琪", role: "测试 Agent", sprite: "tester", desk: 3 },
-  { id: "reviewer", name: "审审", role: "代码审查 Agent", sprite: "techlead", desk: 4 },
-  { id: "devops", name: "小蓝", role: "DevOps Agent", sprite: "devops", desk: 4 }
+  { id: "reviewer", name: "审审", role: "代码审查 Agent", sprite: "techlead", desk: 2 },
+  { id: "devops", name: "小蓝", role: "DevOps Agent", sprite: "devops", desk: 2 }
 ];
-const deskNames = ["产品与架构", "技术与安全", "前端与后端", "数据与测试", "审查与交付"];
+const deskNames = ["产品与架构", "技术与安全", "前端、后端、审查与交付", "数据与测试"];
+const compactRoleNames = { "前端 Agent": "前端", "后端 Agent": "后端", "代码审查 Agent": "审查", "DevOps Agent": "交付" };
 const complaints = {
   "产品经理 Agent": ["需求又变啦？让我先喝口云朵茶。", "这个优先级，真的不能再商量一下吗？"],
   "架构师 Agent": ["再画一张图，应该就是最后一张了……", "这个依赖关系，比毛线团还复杂。"],
@@ -59,6 +61,7 @@ let officeAgents = loadJson(storageKeys.agents, defaultOfficeAgents);
 let memories = loadJson(storageKeys.memory, []);
 let knowledgeDocuments = loadJson(storageKeys.knowledge, []);
 let deploymentRecords = loadJson(storageKeys.deployments, []);
+let externalResources = loadJson(storageKeys.externalResources, []);
 if (!localStorage.getItem("ai-software-team.office-migration-v1")) {
   tasks = tasks.filter((task) => !["t1", "t2", "t3"].includes(task.id));
   memories = memories.filter((item) => item.id !== "m1");
@@ -71,6 +74,11 @@ if (!localStorage.getItem("ai-software-team.office-migration-v1")) {
 if (!localStorage.getItem("ai-software-team.office-migration-v2")) {
   for (const agent of defaultOfficeAgents) if (!officeAgents.some((item) => item.id === agent.id)) officeAgents.push(agent);
   localStorage.setItem("ai-software-team.office-migration-v2", "done");
+  localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents));
+}
+if (!localStorage.getItem("ai-software-team.office-migration-v3")) {
+  officeAgents = officeAgents.map((agent) => ["reviewer", "devops"].includes(agent.id) ? { ...agent, desk: 2 } : agent);
+  localStorage.setItem("ai-software-team.office-migration-v3", "done");
   localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents));
 }
 let enabledSkills = new Set(skillCatalog.flatMap(([, , skills]) => skills.map(([, description]) => description)));
@@ -87,6 +95,7 @@ function saveTasks() { localStorage.setItem(storageKeys.tasks, JSON.stringify(ta
 function saveAgents() { localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents)); }
 function saveMemory() { localStorage.setItem(storageKeys.memory, JSON.stringify(memories)); localStorage.setItem(storageKeys.knowledge, JSON.stringify(knowledgeDocuments)); }
 function saveDeployments() { localStorage.setItem(storageKeys.deployments, JSON.stringify(deploymentRecords)); }
+function saveExternalResources() { localStorage.setItem(storageKeys.externalResources, JSON.stringify(externalResources)); }
 function escapeHtml(value) { const node = document.createElement("div"); node.textContent = value ?? ""; return node.innerHTML; }
 
 function getAgentStatus(agent) {
@@ -108,9 +117,10 @@ function renderOffice() {
     const pets = officeAgents.filter((agent) => agent.desk === desk).map((agent) => {
       const status = getAgentStatus(agent);
       const complaint = complaintAgentId === agent.id ? `<span class="complaint">${escapeHtml(complaintText)}</span>` : "";
-      return `<button class="agent-pet ${status.busy ? "busy" : ""}" type="button" data-agent-id="${agent.id}" aria-label="${escapeHtml(agent.name)}，${escapeHtml(agent.role)}"><img src="assets/agents/${agent.sprite}.png" alt="" draggable="false" /><small></small><span>${escapeHtml(agent.name)} · ${escapeHtml(agent.role.replace(" Agent", ""))}</span>${complaint}</button>`;
+      const roleLabel = compactRoleNames[agent.role] || agent.role.replace(" Agent", "");
+      return `<button class="agent-pet ${status.busy ? "busy" : ""}" type="button" data-agent-id="${agent.id}" aria-label="${escapeHtml(agent.name)}，${escapeHtml(agent.role)}"><img src="assets/agents/${agent.sprite}.png" alt="" draggable="false" /><small></small><span>${escapeHtml(agent.name)} · ${escapeHtml(roleLabel)}</span>${complaint}</button>`;
     }).join("");
-    return `<section class="desk-station"><div class="desk-agents">${pets}</div><div class="desk-album"></div><div class="desk-surface"></div><span class="desk-label">${name}</span></section>`;
+    return `<section class="desk-station desk-${desk}"><div class="desk-agents">${pets}</div><div class="desk-album"></div><div class="desk-surface"></div><span class="desk-label">${name}</span></section>`;
   }).join("");
 }
 
@@ -126,7 +136,25 @@ function render() {
   const completion = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   document.querySelector("#project-progress").value = completion;
   document.querySelector("#project-progress-label").textContent = `${completion}%`;
-  renderOffice(); renderOrchestrator(); renderMemory(); renderDeploymentHistory();
+  renderOffice(); renderOrchestrator(); renderMemory(); renderDeploymentHistory(); renderExternalResources();
+}
+
+function renderExternalResources() {
+  const repositories = externalResources.filter((resource) => resource.type === "repository");
+  const documents = externalResources.filter((resource) => resource.type === "document");
+  const characters = externalResources.reduce((total, resource) => total + JSON.stringify(resource.data || {}).length, 0);
+  document.querySelector("#repository-resource-count").textContent = repositories.length;
+  document.querySelector("#document-resource-count").textContent = documents.length;
+  document.querySelector("#resource-character-count").textContent = characters.toLocaleString("zh-CN");
+  document.querySelector("#resource-updated-at").textContent = externalResources.length ? `更新于 ${new Date(externalResources[0].createdAt).toLocaleString("zh-CN")}` : "暂无资源";
+  document.querySelector("#external-resources").innerHTML = externalResources.length ? externalResources.map((resource) => {
+    if (resource.type === "repository") {
+      const data = resource.data;
+      return `<article class="external-resource"><header><span class="resource-type">代码仓库</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.name)}</h3><p>${escapeHtml(data.description || "未填写仓库说明")}</p><dl><div><dt>默认分支</dt><dd>${escapeHtml(data.defaultBranch)}</dd></div><div><dt>主要语言</dt><dd>${escapeHtml(data.language)}</dd></div><div><dt>文件路径</dt><dd>${data.files.length}</dd></div></dl><small>${data.truncated ? "文件列表已截断" : "文件列表完整"}</small></article>`;
+    }
+    const data = resource.data;
+    return `<article class="external-resource"><header><span class="resource-type">网页资料</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.title)}</h3><p>${escapeHtml(data.content.slice(0, 220))}${data.content.length > 220 ? "…" : ""}</p><a href="${escapeHtml(data.url)}" target="_blank" rel="noreferrer">${escapeHtml(data.url)}</a><small>${data.content.length.toLocaleString("zh-CN")} 个字符</small></article>`;
+  }).join("") : '<p class="empty-state">连接代码仓库或读取公开资料后，资源会显示在这里</p>';
 }
 
 function formatFileSize(bytes) {
@@ -220,7 +248,10 @@ function setRuntimeState(configured, label) {
 function getModelFormConfig() { const form = document.querySelector("#model-settings-form"); const data = new FormData(form); return { provider: data.get("provider"), baseUrl: data.get("baseUrl"), model: data.get("model"), apiKey: data.get("apiKey").trim(), routingMode: document.querySelector("#routing-mode").value }; }
 async function configureRuntime(config) { if (!window.desktop?.configureModel) throw new Error("真实模型执行仅在 Electron 桌面版中可用"); const result = await window.desktop.configureModel(config); setRuntimeState(true, `${result.model} 已连接`); return result; }
 function skillMap() { return Object.fromEntries(skillCatalog.map(([, agent, skills]) => [agent, skills.filter(([, description]) => enabledSkills.has(description)).map(([name]) => name)])); }
-function getTeamContext() { return [...tasks.map((task) => `任务[${task.status}] ${task.title}: ${task.result || task.description || ""}`), ...memories.map((item) => `记忆 ${item.title}: ${item.content}`), ...knowledgeDocuments.map((item) => `知识 ${item.title}: ${item.content.slice(0, 600)}`)]; }
+function getTeamContext() {
+  const resources = externalResources.map((resource) => resource.type === "repository" ? `外部代码仓库 ${resource.data.name}：${resource.data.description || "无说明"}\n默认分支：${resource.data.defaultBranch}\n文件：${resource.data.files.slice(0, 300).map((file) => file.path).join("、")}` : `外部网页资料 ${resource.data.title}（${resource.data.url}）：${resource.data.content.slice(0, 8000)}`);
+  return [...resources, ...tasks.map((task) => `任务[${task.status}] ${task.title}: ${task.result || task.description || ""}`), ...memories.map((item) => `记忆 ${item.title}: ${item.content}`), ...knowledgeDocuments.map((item) => `知识 ${item.title}: ${item.content.slice(0, 600)}`)];
+}
 
 async function executeNextTask(taskId) {
   const task = taskId ? tasks.find((item) => item.id === taskId) : tasks.find((item) => item.status === "todo");
@@ -362,6 +393,37 @@ document.querySelector("#agent-release-review-button").addEventListener("click",
   tasks.unshift(task); saveTasks(); render(); activateView("orchestrator"); await executeNextTask(task.id);
 });
 
+function setIntegrationStatus(configured) {
+  const state = document.querySelector("#github-token-state");
+  state.textContent = configured ? "令牌已配置" : "未配置令牌";
+  state.classList.toggle("connected", configured);
+  const status = document.querySelector("#integration-status");
+  status.classList.toggle("connected", configured);
+  status.querySelector("span:last-child").textContent = configured ? "令牌访问模式" : "公开访问模式";
+}
+document.querySelector("#integration-settings-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const data = new FormData(event.currentTarget);
+  try { const result = await window.desktop.configureIntegrations({ githubToken: data.get("githubToken").trim() }); setIntegrationStatus(result.githubTokenConfigured); event.currentTarget.githubToken.value = ""; }
+  catch (error) { document.querySelector("#github-token-state").textContent = error.message; }
+});
+document.querySelector("#clear-integration-token").addEventListener("click", async () => { const result = await window.desktop?.clearIntegrations?.(); setIntegrationStatus(result?.githubTokenConfigured); document.querySelector("#integration-settings-form").reset(); });
+document.querySelector("#repository-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const button = event.currentTarget.querySelector('button[type="submit"]'); const data = new FormData(event.currentTarget);
+  button.disabled = true; button.textContent = "正在读取";
+  try { const repository = await window.desktop.inspectRepository(data.get("repository")); externalResources = externalResources.filter((resource) => resource.type !== "repository" || resource.data.id !== repository.id); externalResources.unshift({ id: crypto.randomUUID(), type: "repository", data: repository, createdAt: new Date().toISOString() }); saveExternalResources(); renderExternalResources(); event.currentTarget.reset(); }
+  catch (error) { eventLog.unshift(`仓库读取失败：${error.message}`); renderOrchestrator(); }
+  finally { button.disabled = false; button.textContent = "连接仓库"; }
+});
+document.querySelector("#document-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); const button = event.currentTarget.querySelector('button[type="submit"]'); const data = new FormData(event.currentTarget);
+  button.disabled = true; button.textContent = "正在读取";
+  try { const documentResource = await window.desktop.fetchDocument(data.get("url")); externalResources = externalResources.filter((resource) => resource.type !== "document" || resource.data.url !== documentResource.url); externalResources.unshift({ id: crypto.randomUUID(), type: "document", data: documentResource, createdAt: new Date().toISOString() }); saveExternalResources(); renderExternalResources(); event.currentTarget.reset(); }
+  catch (error) { eventLog.unshift(`资料读取失败：${error.message}`); renderOrchestrator(); }
+  finally { button.disabled = false; button.textContent = "读取资料"; }
+});
+document.querySelector("#external-resources").addEventListener("click", (event) => { const id = event.target.dataset.deleteResource; if (!id) return; externalResources = externalResources.filter((resource) => resource.id !== id); saveExternalResources(); renderExternalResources(); });
+document.querySelector("#clear-resources-button").addEventListener("click", () => { if (!externalResources.length || confirm("确定清空所有外部资源吗？")) { externalResources = []; saveExternalResources(); renderExternalResources(); } });
+
 document.querySelector("#skills-grid").addEventListener("change", (event) => { const skill = event.target.dataset.skill; if (!skill) return; event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills(); });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
 document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const config = getModelFormConfig(); try { await configureRuntime(config); sessionStorage.setItem("ai-software-team.model-settings", JSON.stringify({ provider: config.provider, baseUrl: config.baseUrl, model: config.model, routingMode: config.routingMode })); event.currentTarget.querySelector('[name="apiKey"]').value = ""; eventLog.unshift(`灵灵已连接 ${config.model}`); render(); } catch (error) { setRuntimeState(false, "模型待配置"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } });
@@ -391,3 +453,4 @@ setInterval(() => renderOffice(), 3000);
 loadModelSettings(); renderSkills(); renderChat(); render();
 window.desktop?.getModelStatus?.().then((status) => setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"));
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
+window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));
