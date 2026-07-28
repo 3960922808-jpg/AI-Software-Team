@@ -3,8 +3,13 @@ const workflowState = require("../workflow-state");
 
 const empty = workflowState.build([], null);
 assert.strictEqual(empty.task, null);
-assert.strictEqual(empty.nodes.length, 14);
+assert.strictEqual(empty.nodes.length, 22);
 assert.strictEqual(empty.summary.progress, 0);
+assert.strictEqual(empty.edges.filter((edge) => edge.from === "commander").length, 10);
+for (const agentId of workflowState.agentIds) {
+  assert.ok(empty.edges.some((edge) => edge.from === "commander" && edge.to === agentId), `经理缺少到 ${agentId} 的支流`);
+  assert.ok(empty.edges.some((edge) => edge.from === agentId && edge.to === `${agentId}-output`), `${agentId} 缺少能力板块连接`);
+}
 
 const queued = workflowState.build([{
   id: "task-1",
@@ -29,7 +34,9 @@ const completed = workflowState.build([{
 }], "task-2");
 assert.strictEqual(completed.nodes.find((node) => node.id === "backend").state, "done");
 assert.strictEqual(completed.nodes.find((node) => node.id === "tester").state, "done");
-assert.strictEqual(completed.nodes.find((node) => node.id === "delivery").state, "done");
+assert.strictEqual(completed.nodes.find((node) => node.id === "backend-output").state, "done");
+assert.strictEqual(completed.nodes.find((node) => node.id === "tester-output").state, "done");
+assert.strictEqual(completed.summary.progress, 100);
 assert.strictEqual(completed.summary.artifacts, 2);
 
 const failed = workflowState.build([{
@@ -40,7 +47,7 @@ const failed = workflowState.build([{
   runs: [{ delegateTo: "测试 Agent", title: "运行测试", verification: { passed: false, checks: [{}] } }]
 }], "task-3");
 assert.strictEqual(failed.nodes.find((node) => node.id === "tester").state, "failed");
-assert.strictEqual(failed.nodes.find((node) => node.id === "delivery").state, "failed");
+assert.strictEqual(failed.nodes.find((node) => node.id === "tester-output").state, "failed");
 assert.ok(failed.edges.some((edge) => edge.state === "failed"));
 
 console.log("可视化工作流状态测试通过");

@@ -1,6 +1,6 @@
 {
   "name": "ai-software-team",
-  "version": "0.15.0",
+  "version": "0.15.1",
   "description": "Windows desktop multi-agent software development workspace",
   "main": "electron/main.js",
   "author": "AI Software Team",
@@ -21,7 +21,7 @@
     "asar": true,
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "release-v0.15"
+      "output": "release-v0.15.1"
     },
     "files": [
       "index.html",

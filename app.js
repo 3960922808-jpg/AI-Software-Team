@@ -107,7 +107,7 @@ let interfaceMode = loadJson(storageKeys.interfaceMode, "studio") === "workflow"
 let lastStudioView = "projects";
 let workflowScale = 1;
 let selectedWorkflowTaskId = null;
-let selectedWorkflowNodeId = "orchestrator";
+let selectedWorkflowNodeId = "commander";
 let modeTransitionRunning = false;
 
 const modelPoolTargets = [
@@ -205,14 +205,13 @@ function workflowStateLabel(state) {
 }
 
 function workflowNodeSkills(node) {
-  if (node.role) {
-    const owner = skillCatalog.find(([, agent]) => agent === node.role);
+  const skillOwner = node.role || node.sourceRole;
+  if (skillOwner) {
+    const owner = skillCatalog.find(([, agent]) => agent === skillOwner);
     return (owner?.[2] || []).filter(([, description]) => enabledSkills.has(description)).map(([name]) => name);
   }
   if (node.id === "request") return ["目标解析", "约束识别", "验收提取"];
   if (node.id === "commander") return skillCatalog.find(([, agent]) => agent === "指挥 Agent")?.[2].filter(([, description]) => enabledSkills.has(description)).map(([name]) => name) || [];
-  if (node.id === "orchestrator") return ["任务路由", "依赖编排", "状态同步"];
-  if (node.id === "delivery") return ["真实检查", "Git 版本", "交付审计"];
   return [];
 }
 
@@ -222,8 +221,15 @@ function workflowPath(edge, byId) {
   if (!source || !target) return "";
   const sourceWidth = source.width || 210;
   const targetWidth = target.width || 210;
-  const horizontal = Math.abs(target.x - source.x) > Math.abs(target.y - source.y) * 1.4;
-  if (horizontal) {
+  if (edge.kind === "input") {
+    const x1 = source.x + sourceWidth / 2;
+    const y1 = source.y + 76;
+    const x2 = target.x + targetWidth / 2;
+    const y2 = target.y;
+    const middle = (y1 + y2) / 2;
+    return `M ${x1} ${y1} C ${x1} ${middle}, ${x2} ${middle}, ${x2} ${y2}`;
+  }
+  if (edge.kind === "branch" || edge.kind === "output") {
     const leftToRight = target.x > source.x;
     const x1 = source.x + (leftToRight ? sourceWidth : 0);
     const y1 = source.y + 38;
@@ -232,16 +238,11 @@ function workflowPath(edge, byId) {
     const middle = (x1 + x2) / 2;
     return `M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}`;
   }
-  const x1 = source.x + sourceWidth / 2;
-  const y1 = source.y + 76;
-  const x2 = target.x + targetWidth / 2;
-  const y2 = target.y;
-  const middle = (y1 + y2) / 2;
-  return `M ${x1} ${y1} C ${x1} ${middle}, ${x2} ${middle}, ${x2} ${y2}`;
+  return "";
 }
 
 function renderWorkflowInspector(workflow) {
-  const node = workflow.nodes.find((item) => item.id === selectedWorkflowNodeId) || workflow.nodes.find((item) => item.id === "orchestrator");
+  const node = workflow.nodes.find((item) => item.id === selectedWorkflowNodeId) || workflow.nodes.find((item) => item.id === "commander");
   if (!node) return;
   selectedWorkflowNodeId = node.id;
   document.querySelector("#workflow-inspector-title").textContent = node.title;
@@ -250,7 +251,8 @@ function renderWorkflowInspector(workflow) {
   const skills = workflowNodeSkills(node);
   document.querySelector("#workflow-skill-list").innerHTML = skills.length ? skills.map((skill) => `<span>${escapeHtml(skill)}</span>`).join("") : "<span>该节点没有启用技能</span>";
   const task = workflow.task;
-  const profileId = node.role ? modelPoolState.assignments?.[node.role] : node.id === "commander" ? modelPoolState.assignments?.commander : null;
+  const routedRole = node.role || node.sourceRole;
+  const profileId = routedRole ? modelPoolState.assignments?.[routedRole] : node.id === "commander" ? modelPoolState.assignments?.commander : null;
   const profile = modelPoolState.profiles?.find((item) => item.id === profileId);
   const run = node.run;
   const evidence = [
@@ -259,7 +261,7 @@ function renderWorkflowInspector(workflow) {
     ["模型路由", profile ? `${profile.name} · ${profile.model}` : "跟随主模型"],
     ["执行步骤", run?.title || (node.role ? "暂无执行记录" : node.detail)],
     ["真实检查", run?.verification ? `${run.verification.checks?.length || 0} 项 · ${run.verification.passed ? "通过" : "未通过"}` : "暂无"],
-    ["生成产物", `${run?.artifacts?.length || (node.id === "delivery" ? task?.artifacts?.length || 0 : 0)} 个文件`]
+    ["生成产物", `${run?.artifacts?.length || 0} 个文件`]
   ];
   document.querySelector("#workflow-evidence").innerHTML = evidence.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
 }
@@ -277,16 +279,11 @@ function renderWorkflow() {
   document.querySelector("#workflow-completed").textContent = `${workflow.summary.completed}/${workflow.nodes.length}`;
   document.querySelector("#workflow-artifacts").textContent = workflow.summary.artifacts;
   document.querySelector("#workflow-progress").textContent = `${workflow.summary.progress}%`;
-  document.querySelector("#workflow-model-capability").textContent = `${modelPoolState.profiles?.length || 0} 个独立模型`;
-  document.querySelector("#workflow-memory-capability").textContent = `${tasks.length + memories.length + knowledgeDocuments.length} 条上下文`;
-  document.querySelector("#workflow-skill-capability").textContent = `${enabledSkills.size} 项启用`;
-  document.querySelector("#workflow-resource-capability").textContent = `${externalResources.length} 个资源`;
-  document.querySelector("#workflow-sandbox-capability").textContent = sandboxPolicy?.enabled ? "沙箱已连接" : "沙箱待连接";
   document.querySelector("#workflow-run-button").disabled = !workflow.task || workflow.task.status === "progress";
   document.querySelector("#workflow-run-button").textContent = workflow.task?.status === "done" ? "重新执行任务" : workflow.task?.status === "progress" ? "团队执行中" : "运行当前任务";
   const byId = Object.fromEntries(workflow.nodes.map((node) => [node.id, node]));
   document.querySelector("#workflow-links").innerHTML = workflow.edges.map((edge) => `<path class="workflow-link ${edge.state}" d="${workflowPath(edge, byId)}"></path>`).join("");
-  document.querySelector("#workflow-nodes").innerHTML = workflow.nodes.map((node) => `<button class="workflow-node ${node.state} ${node.id === selectedWorkflowNodeId ? "selected" : ""}" type="button" data-workflow-node="${node.id}" style="left:${node.x}px;top:${node.y}px;--node-width:${node.width}px" aria-label="${escapeHtml(node.title)}，${workflowStateLabel(node.state)}"><span class="workflow-node-code">${node.code}</span><span class="workflow-node-copy"><strong>${escapeHtml(node.title)}</strong><small>${escapeHtml(node.detail || node.subtitle)}</small></span><i class="workflow-node-state"></i></button>`).join("");
+  document.querySelector("#workflow-nodes").innerHTML = workflow.nodes.map((node) => `<button class="workflow-node ${node.type} ${node.state} ${node.id === selectedWorkflowNodeId ? "selected" : ""}" type="button" data-workflow-node="${node.id}" aria-label="${escapeHtml(node.title)}，${workflowStateLabel(node.state)}"><span class="workflow-node-code">${node.code}</span><span class="workflow-node-copy"><strong>${escapeHtml(node.title)}</strong><small>${escapeHtml(node.detail || node.subtitle)}</small></span><i class="workflow-node-state"></i></button>`).join("");
   renderWorkflowInspector(workflow);
 }
 
@@ -299,7 +296,8 @@ function setWorkflowScale(nextScale) {
 
 function centerWorkflowCanvas() {
   const viewport = document.querySelector("#workflow-viewport");
-  const left = Math.max(0, (1280 * workflowScale - viewport.clientWidth) / 2);
+  const canvas = document.querySelector("#workflow-canvas");
+  const left = Math.max(0, (canvas.offsetWidth * workflowScale - viewport.clientWidth) / 2);
   viewport.scrollTo({ left, top: 0, behavior: "smooth" });
 }
 
@@ -777,7 +775,7 @@ function activateView(name) { if (name !== "workflow") lastStudioView = name; do
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => activateView(button.dataset.view)));
 document.querySelectorAll("[data-open-view]").forEach((button) => button.addEventListener("click", () => activateView(button.dataset.openView)));
 document.querySelectorAll("[data-interface-mode]").forEach((button) => button.addEventListener("click", () => switchInterfaceMode(button.dataset.interfaceMode)));
-document.querySelector("#workflow-task-select").addEventListener("change", (event) => { selectedWorkflowTaskId = event.target.value || null; selectedWorkflowNodeId = "orchestrator"; renderWorkflow(); });
+document.querySelector("#workflow-task-select").addEventListener("change", (event) => { selectedWorkflowTaskId = event.target.value || null; selectedWorkflowNodeId = "commander"; renderWorkflow(); });
 document.querySelector("#workflow-nodes").addEventListener("click", (event) => { const node = event.target.closest("[data-workflow-node]"); if (!node) return; selectedWorkflowNodeId = node.dataset.workflowNode; renderWorkflow(); });
 document.querySelector("#workflow-zoom-out").addEventListener("click", () => setWorkflowScale(workflowScale - .1));
 document.querySelector("#workflow-zoom-in").addEventListener("click", () => setWorkflowScale(workflowScale + .1));
