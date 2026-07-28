@@ -12,6 +12,10 @@
     <main class="app-shell">
       <aside class="sidebar">
         <div class="brand"><span class="brand-mark"><img src="assets/brand/app-icon.png" alt="" /></span><span><b>Software Team</b><small>多智能体研发工作台</small></span></div>
+        <div class="interface-mode-switch" role="group" aria-label="界面模式">
+          <button class="active" type="button" data-interface-mode="studio"><span>▦</span>工作室</button>
+          <button type="button" data-interface-mode="workflow"><span>⌘</span>工作流</button>
+        </div>
         <nav aria-label="主导航">
           <button class="nav-item active" type="button" data-view="projects"><span>▦</span>Agent 工作室</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
@@ -48,6 +52,55 @@
             </aside>
           </section>
           <div class="agent-context-menu" id="agent-context-menu" hidden><header><img id="context-agent-image" alt="" /><div><strong id="context-agent-name"></strong><span id="context-agent-role"></span></div></header><div class="context-progress"><div><span>当前进度</span><b id="context-progress-label">0%</b></div><progress id="context-progress" max="100" value="0"></progress><small id="context-task-label">当前空闲</small></div><button type="button" id="context-edit-agent">编辑 Agent</button><button class="danger" type="button" id="context-delete-agent">删除 Agent</button></div>
+        </section>
+        <section class="view workflow-view" data-view-panel="workflow">
+          <header class="topbar workflow-topbar">
+            <div><p class="eyebrow">VISUAL WORKFLOW</p><h1>可视化工作流</h1></div>
+            <div class="workflow-toolbar">
+              <label class="workflow-task-picker">当前任务<select id="workflow-task-select"><option value="">等待创建任务</option></select></label>
+              <div class="workflow-zoom" role="group" aria-label="画布缩放">
+                <button class="icon-button" id="workflow-zoom-out" type="button" title="缩小" aria-label="缩小">−</button>
+                <span id="workflow-scale-label">100%</span>
+                <button class="icon-button" id="workflow-zoom-in" type="button" title="放大" aria-label="放大">＋</button>
+                <button class="icon-button" id="workflow-center" type="button" title="居中画布" aria-label="居中画布">◎</button>
+              </div>
+              <button class="primary-button" id="workflow-run-button" type="button">运行当前任务</button>
+            </div>
+          </header>
+          <section class="workflow-summary" aria-label="工作流摘要">
+            <div><span>流程状态</span><strong id="workflow-status">等待任务</strong></div>
+            <div><span>已完成节点</span><strong id="workflow-completed">0/14</strong></div>
+            <div><span>真实产物</span><strong id="workflow-artifacts">0</strong></div>
+            <div><span>闭环进度</span><strong id="workflow-progress">0%</strong></div>
+          </section>
+          <section class="workflow-layout">
+            <section class="workflow-canvas-panel">
+              <header class="workflow-layers" aria-hidden="true"><span>需求与管理</span><span>专业决策</span><span>研发团队</span><span>交付闭环</span></header>
+              <div class="workflow-viewport" id="workflow-viewport">
+                <div class="workflow-canvas" id="workflow-canvas">
+                  <aside class="workflow-side-stack workflow-side-left" aria-label="模型与记忆能力">
+                    <section><b>模型路由</b><span id="workflow-model-capability">主模型回退</span><small>主 Agent 与角色独立连接</small></section>
+                    <section><b>记忆与检索</b><span id="workflow-memory-capability">0 条上下文</span><small>任务、项目记忆与知识文档</small></section>
+                  </aside>
+                  <aside class="workflow-side-stack workflow-side-right" aria-label="技能与工具能力">
+                    <section><b>技能引擎</b><span id="workflow-skill-capability">0 项启用</span><small>角色专属技能与安全插件</small></section>
+                    <section><b>联网工具</b><span id="workflow-resource-capability">0 个资源</span><small>公开文档与 GitHub 仓库</small></section>
+                    <section><b>受控运行</b><span id="workflow-sandbox-capability">沙箱待连接</span><small>文件、终端、检查、修复与 Git</small></section>
+                  </aside>
+                  <svg id="workflow-links" width="1280" height="820" viewBox="0 0 1280 820" aria-hidden="true"></svg>
+                  <div id="workflow-nodes"></div>
+                </div>
+              </div>
+              <footer class="workflow-legend"><span><i class="done"></i>已完成</span><span><i class="active"></i>执行中</span><span><i class="queued"></i>等待</span><span><i class="failed"></i>阻断</span><b>节点和连线来自当前任务的真实执行记录</b></footer>
+            </section>
+            <aside class="workflow-inspector">
+              <header><p class="eyebrow">节点检查器</p><h2 id="workflow-inspector-title">选择流程节点</h2><span id="workflow-inspector-state">等待选择</span></header>
+              <p id="workflow-inspector-detail">点击画布中的节点，查看职责、已装载技能、执行结果和产物。</p>
+              <section><h3>已装载技能</h3><div class="workflow-skill-list" id="workflow-skill-list"><span>暂无</span></div></section>
+              <section><h3>执行证据</h3><dl class="workflow-evidence" id="workflow-evidence"><div><dt>状态</dt><dd>等待任务</dd></div></dl></section>
+              <section class="workflow-capabilities"><h3>架构能力接入</h3><ul><li><span>模型池与角色路由</span><b>已接入</b></li><li><span>任务、项目与知识记忆</span><b>已接入</b></li><li><span>文件、终端与 Git 工具</span><b>已接入</b></li><li><span>自动测试与修复循环</span><b>已接入</b></li><li><span>安全审查与交付审计</span><b>已接入</b></li><li><span>技能插件与启停控制</span><b>已接入</b></li></ul></section>
+            </aside>
+          </section>
         </section>
         <section class="view" data-view-panel="orchestrator">
           <header class="topbar"><div><p class="eyebrow">Agent Orchestrator</p><h1>智能调度中心</h1></div><button class="primary-button" id="run-queue-button" type="button">AI 执行下一任务</button></header>
@@ -175,6 +228,15 @@
         <menu><button class="secondary-button" type="button" data-close-model-profile>取消</button><button class="primary-button" type="submit" id="save-model-profile-button">保存连接</button></menu>
       </form>
     </dialog>
+    <div class="mode-transition" id="mode-transition" hidden aria-live="polite" aria-busy="true">
+      <div class="mode-transition-visual" aria-hidden="true"><span class="transition-ring ring-one"></span><span class="transition-ring ring-two"></span><img src="assets/brand/app-icon.png" alt="" /></div>
+      <p class="eyebrow">INTERFACE ORCHESTRATION</p>
+      <h2 id="mode-transition-title">正在切换工作模式</h2>
+      <p id="mode-transition-message">正在同步任务上下文</p>
+      <div class="mode-progress"><span id="mode-progress-fill"></span></div>
+      <strong id="mode-progress-label">0%</strong>
+    </div>
+    <script src="workflow-state.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
