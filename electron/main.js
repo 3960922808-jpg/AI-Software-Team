@@ -96,13 +96,14 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: false
+      spellcheck: false,
+      backgroundThrottling: !process.env.AI_TEAM_SMOKE_TEST
     }
   });
 
   window.loadFile(path.join(__dirname, "..", "index.html"));
   window.once("ready-to-show", async () => {
-    if (!splashWindow || splashWindow.isDestroyed()) { window.show(); return; }
+    if (!splashWindow || splashWindow.isDestroyed()) { if (!process.env.AI_TEAM_SMOKE_TEST) window.show(); return; }
     await updateSplash(splashWindow, 92, "正在准备工作台界面");
     await delay(Math.max(0, startupMinimumDuration - (Date.now() - startupStartedAt)));
     if (!splashWindow.isDestroyed()) {
@@ -146,6 +147,29 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
       app.quit();
     });
   }
+  if (process.env.AI_TEAM_SMOKE_TEST) {
+    window.webContents.once("did-finish-load", async () => {
+      try {
+        const result = await window.webContents.executeJavaScript(`(async () => {
+          if (!window.WorkflowState) throw new Error("工作流状态引擎未加载");
+          if (document.querySelectorAll(".workflow-node").length !== 14) throw new Error("工作流节点数量错误");
+          const initial = document.body.dataset.interfaceMode;
+          const target = initial === "workflow" ? "studio" : "workflow";
+          await switchInterfaceMode(target);
+          if (document.body.dataset.interfaceMode !== target) throw new Error("首次模式切换失败：" + initial + " → " + target + "，当前为 " + document.body.dataset.interfaceMode);
+          if (!document.querySelector("#mode-transition").hidden) throw new Error("切换动画没有结束");
+          await switchInterfaceMode(initial);
+          if (document.body.dataset.interfaceMode !== initial) throw new Error("返回原模式失败");
+          return { nodes: document.querySelectorAll(".workflow-node").length, initial, restored: document.body.dataset.interfaceMode };
+        })()`);
+        console.log(`桌面模式切换测试通过：${JSON.stringify(result)}`);
+        app.exit(0);
+      } catch (error) {
+        console.error(`桌面模式切换测试失败：${error.stack || error.message}`);
+        app.exit(1);
+      }
+    });
+  }
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) shell.openExternal(url);
     return { action: "deny" };
@@ -162,7 +186,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     const startupStartedAt = Date.now();
     let splashWindow = null;
-    if (!process.env.AI_TEAM_SCREENSHOT) {
+    if (!process.env.AI_TEAM_SCREENSHOT && !process.env.AI_TEAM_SMOKE_TEST) {
       try { splashWindow = await createSplashWindow(); }
       catch (error) { console.error(`启动页加载失败：${error.message}`); }
     }
