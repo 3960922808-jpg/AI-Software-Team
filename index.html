@@ -15,6 +15,7 @@
         <nav aria-label="主导航">
           <button class="nav-item active" type="button" data-view="projects"><span>▦</span>Agent 工作室</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
+          <button class="nav-item" type="button" data-view="sandbox"><span>▣</span>执行沙箱</button>
           <button class="nav-item" type="button" data-view="audit"><span>✓</span>运行与审计</button>
           <button class="nav-item" type="button" data-view="memory"><span>◇</span>记忆与知识库</button>
           <button class="nav-item" type="button" data-view="settings"><span>⚙</span>模型与 API</button>
@@ -53,6 +54,16 @@
           <section class="orchestrator-brief"><div><p class="eyebrow">调度状态</p><h2>任务路由已启用</h2><p>依据任务优先级、专业领域与 Agent 容量，将项目任务路由至合适的执行单元。</p></div><div class="orchestrator-state"><span class="status-dot"></span><strong id="orchestrator-status">等待任务</strong><small id="orchestrator-detail">队列由项目工作台同步</small></div></section>
           <section class="orchestrator-layout"><section class="queue-panel"><header class="panel-heading"><div><p class="eyebrow">任务队列</p><h2>待调度任务</h2></div><span class="count" id="queue-count">0</span></header><div id="execution-queue" class="execution-queue"></div></section><section class="agents-panel"><header class="panel-heading"><div><p class="eyebrow">注册中心</p><h2>专业 Agent</h2></div><span class="agent-total">10 在线</span></header><div id="agent-registry" class="agent-registry"></div></section></section>
           <section class="event-section"><div class="section-heading"><div><p class="eyebrow">执行记录</p><h2>调度事件</h2></div><span class="agent-total">实时</span></div><ol id="event-log" class="event-log"></ol></section>
+        </section>
+        <section class="view" data-view-panel="sandbox">
+          <header class="topbar sandbox-topbar"><div><p class="eyebrow">Execution Sandbox</p><h1>执行沙箱</h1></div><div class="header-actions"><label class="sandbox-toggle"><input id="auto-git-toggle" type="checkbox" checked /><span>成功后自动 Git</span></label><button class="secondary-button" id="refresh-sandbox-button" type="button">刷新状态</button></div></header>
+          <section class="sandbox-summary"><div><span>执行模式</span><strong id="sandbox-mode">受控运行</strong></div><div><span>系统 Shell</span><strong id="sandbox-shell">已禁用</strong></div><div><span>命令超时</span><strong id="sandbox-timeout">45 秒</strong></div><div><span>自动修复</span><strong id="sandbox-repairs">最多 2 轮</strong></div></section>
+          <section class="sandbox-toolbar"><label>任务工程<select id="sandbox-task-select"><option value="">暂无已生成工程</option></select></label><div class="sandbox-actions"><button class="secondary-button" id="verify-task-button" type="button">重新验证</button><button class="secondary-button" id="snapshot-task-button" type="button">创建 Git 版本</button><button class="primary-button" id="open-task-project-button" type="button">打开工程</button></div><p id="sandbox-action-state" role="status">选择有文件产物的任务后，可重新验证或创建隔离版本。</p></section>
+          <section class="sandbox-layout">
+            <section class="sandbox-policy-panel"><header class="panel-heading"><div><p class="eyebrow">安全边界</p><h2>工具策略</h2></div><span class="connection-state connected">已启用</span></header><dl class="sandbox-policy-list"><div><dt>目录范围</dt><dd id="sandbox-boundary">.ai-team-output/&lt;task-id&gt;</dd></div><div><dt>允许命令</dt><dd id="sandbox-commands">Node、包管理器、Python、只读 Git</dd></div><div><dt>日志上限</dt><dd id="sandbox-output-limit">256 KB</dd></div><div><dt>进程方式</dt><dd>无 Shell、清理敏感环境变量</dd></div></dl></section>
+            <section class="demo-panel"><header class="panel-heading"><div><p class="eyebrow">可运行案例</p><h2>快速创建真实任务</h2></div><span class="count">3</span></header><div class="demo-list"><button type="button" data-demo="website"><b>01</b><span><strong>响应式网站</strong><small>完整页面、交互、测试与 README</small></span></button><button type="button" data-demo="desktop"><b>02</b><span><strong>桌面工具软件</strong><small>Electron 工具、文件操作与打包入口</small></span></button><button type="button" data-demo="api"><b>03</b><span><strong>API 服务</strong><small>接口、校验、自动化测试与启动命令</small></span></button></div></section>
+          </section>
+          <section class="sandbox-run-section"><header class="section-heading"><div><p class="eyebrow">执行闭环</p><h2>验证与修复记录</h2></div><span class="session-label" id="sandbox-run-count">0 次真实检查</span></header><div class="sandbox-run-list" id="sandbox-run-list"><p class="empty-state">Agent 生成项目后，真实检查、错误和修复记录会显示在这里</p></div></section>
         </section>
         <section class="view" data-view-panel="memory">
           <header class="topbar"><div><p class="eyebrow">Memory System</p><h1>记忆与知识库</h1></div><div class="header-actions"><input id="knowledge-file-input" type="file" accept=".txt,.md,.json,.csv" multiple hidden /><button class="secondary-button" id="import-knowledge-button" type="button">导入文档</button><button class="primary-button" id="new-memory-button" type="button">添加记忆</button></div></header>
@@ -95,6 +106,7 @@
           <header class="topbar"><div><p class="eyebrow">Skill System</p><h1>Agent 技能中心</h1></div><span class="session-label" id="skills-summary">0 项技能已启用</span></header>
           <section class="skills-intro"><div><p class="eyebrow">专属能力</p><h2>为每个 Agent 配置可审计的工作技能</h2><p>技能决定 Agent 可以执行的操作范围。指挥 Agent 只负责任务分解和分派，专业 Agent 仅使用其被授权的专属 Skill。</p></div></section>
           <section class="skills-grid" id="skills-grid"></section>
+          <section class="plugin-section"><header class="section-heading"><div><p class="eyebrow">Manifest Plugins</p><h2>安全插件</h2></div><div class="header-actions"><span class="session-label" id="plugin-summary">0 个插件启用</span><button class="secondary-button" id="open-plugin-directory-button" type="button">打开插件目录</button></div></header><div class="plugin-list" id="plugin-list"><p class="empty-state">正在加载插件注册表</p></div><p class="plugin-note" id="plugin-state">插件只注入结构化技能与约束，不执行第三方脚本。</p></section>
         </section>
         <section class="view" data-view-panel="audit">
           <header class="topbar audit-topbar"><div><p class="eyebrow">运行审计</p><h1>运行与审计中心</h1></div><div class="header-actions"><button class="secondary-button" id="refresh-audit-button" type="button">刷新</button><button class="primary-button" id="export-audit-button" type="button">导出审计报告</button></div></header>

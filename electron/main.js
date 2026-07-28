@@ -4,11 +4,14 @@ const path = require("path");
 const modelRuntime = require("./model-runtime");
 const deliveryRuntime = require("./delivery-runtime");
 const integrationRuntime = require("./integration-runtime");
+const executionRuntime = require("./execution-runtime");
 const { createModelSettingsStore } = require("./model-settings-store");
 const { createModelPoolStore } = require("./model-pool-store");
+const { createPluginRuntime } = require("./plugin-runtime");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
+let pluginRuntime = null;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
 
@@ -60,8 +63,21 @@ function initializeModelSettings() {
     filePath: path.join(app.getPath("userData"), "model-pool.json"),
     ...encryption,
   });
+  pluginRuntime = createPluginRuntime({
+    directoryPath: path.join(app.getPath("userData"), "plugins"),
+    statePath: path.join(app.getPath("userData"), "plugins-state.json"),
+  });
   const saved = modelSettingsStore.load();
   if (saved) modelRuntime.configure(saved);
+  else if (process.env.AI_TEAM_API_KEY && process.env.AI_TEAM_MODEL && process.env.AI_TEAM_BASE_URL) {
+    modelRuntime.configure({
+      provider: process.env.AI_TEAM_PROVIDER || "openai",
+      baseUrl: process.env.AI_TEAM_BASE_URL,
+      model: process.env.AI_TEAM_MODEL,
+      apiKey: process.env.AI_TEAM_API_KEY,
+      routingMode: process.env.AI_TEAM_ROUTING_MODE || "balanced",
+    });
+  }
   modelRuntime.configurePool(modelPoolStore.load());
 }
 
@@ -204,8 +220,25 @@ if (!app.requestSingleInstanceLock()) {
       fs.writeFileSync(result.filePath, content, "utf8");
       return { canceled: false, path: result.filePath, bytes: Buffer.byteLength(content, "utf8") };
     });
-    ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask(payload));
-    ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat(payload));
+    ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask({ ...payload, plugins: pluginRuntime?.context() || [] }));
+    ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [] }));
+    ipcMain.handle("plugins:get", () => pluginRuntime?.status() || []);
+    ipcMain.handle("plugins:set-enabled", (_event, pluginId, enabled) => pluginRuntime.setEnabled(pluginId, enabled));
+    ipcMain.handle("plugins:open-directory", async () => {
+      const error = await shell.openPath(pluginRuntime.directoryPath);
+      if (error) throw new Error(error);
+      return { opened: true, path: pluginRuntime.directoryPath };
+    });
+    ipcMain.handle("sandbox:status", () => executionRuntime.policyStatus());
+    ipcMain.handle("sandbox:verify", (_event, taskId) => executionRuntime.runChecks(modelRuntime.getWorkspace().path, taskId));
+    ipcMain.handle("sandbox:git-status", (_event, taskId) => executionRuntime.gitStatus(modelRuntime.getWorkspace().path, taskId));
+    ipcMain.handle("sandbox:git-snapshot", (_event, taskId, message) => executionRuntime.gitSnapshot(modelRuntime.getWorkspace().path, taskId, message));
+    ipcMain.handle("sandbox:open", async (_event, taskId) => {
+      const target = executionRuntime.taskRootFor(modelRuntime.getWorkspace().path, taskId);
+      const error = await shell.openPath(target);
+      if (error) throw new Error(error);
+      return { opened: true, path: target };
+    });
     ipcMain.handle("workspace:get", () => modelRuntime.getWorkspace());
     ipcMain.handle("workspace:set", (_event, selectedPath) => modelRuntime.setWorkspace(selectedPath));
     ipcMain.handle("workspace:choose", async () => {

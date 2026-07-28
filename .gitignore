@@ -6,6 +6,7 @@ release-v*/
 .electron-dist-v*/
 .env
 .env.*
+!.env.example
 __pycache__/
 *.py[cod]
 release/
