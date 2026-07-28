@@ -7,10 +7,12 @@ const integrationRuntime = require("./integration-runtime");
 const executionRuntime = require("./execution-runtime");
 const { createModelSettingsStore } = require("./model-settings-store");
 const { createModelPoolStore } = require("./model-pool-store");
+const { createIntegrationSettingsStore } = require("./integration-settings-store");
 const { createPluginRuntime } = require("./plugin-runtime");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
+let integrationSettingsStore = null;
 let pluginRuntime = null;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
@@ -63,6 +65,10 @@ function initializeModelSettings() {
     filePath: path.join(app.getPath("userData"), "model-pool.json"),
     ...encryption,
   });
+  integrationSettingsStore = createIntegrationSettingsStore({
+    filePath: path.join(app.getPath("userData"), "integration-settings.json"),
+    ...encryption,
+  });
   pluginRuntime = createPluginRuntime({
     directoryPath: path.join(app.getPath("userData"), "plugins"),
     statePath: path.join(app.getPath("userData"), "plugins-state.json"),
@@ -79,6 +85,8 @@ function initializeModelSettings() {
     });
   }
   modelRuntime.configurePool(modelPoolStore.load());
+  const integrations = integrationSettingsStore.load();
+  if (integrations.githubToken) integrationRuntime.configure(integrations);
 }
 
 const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
@@ -301,9 +309,18 @@ if (!app.requestSingleInstanceLock()) {
       if (error) throw new Error(error);
       return { opened: true, path: target };
     });
-    ipcMain.handle("integration:configure", (_event, payload) => integrationRuntime.configure(payload));
-    ipcMain.handle("integration:clear", () => integrationRuntime.clear());
-    ipcMain.handle("integration:status", () => integrationRuntime.status());
+    ipcMain.handle("integration:configure", (_event, payload) => {
+      integrationSettingsStore.persist(payload);
+      integrationRuntime.configure(integrationSettingsStore.load());
+      return { ...integrationRuntime.status(), ...integrationSettingsStore.status() };
+    });
+    ipcMain.handle("integration:clear", () => {
+      integrationSettingsStore.clear();
+      integrationRuntime.clear();
+      return { ...integrationRuntime.status(), ...integrationSettingsStore.status() };
+    });
+    ipcMain.handle("integration:status", () => ({ ...integrationRuntime.status(), ...integrationSettingsStore.status() }));
+    ipcMain.handle("integration:test", () => integrationRuntime.testConnection());
     ipcMain.handle("integration:fetch-document", (_event, url) => integrationRuntime.fetchDocument(url));
     ipcMain.handle("integration:inspect-repository", (_event, repository) => integrationRuntime.inspectRepository(repository));
     await updateSplash(splashWindow, 72, "正在连接任务、记忆与审计中心");

@@ -90,13 +90,33 @@ async function main() {
         managerBranches: currentWorkflow.edges.filter((edge) => edge.from === 'commander').length,
         chat: Boolean(document.querySelector('#workflow-chat-form')),
         modelSelect: Boolean(document.querySelector('#workflow-node-model')),
-        importSkill: Boolean(document.querySelector('#import-plugin-button'))
+        importSkill: Boolean(document.querySelector('#import-plugin-button')),
+        backButtons: document.querySelectorAll('[data-view-back]').length,
+        agentRoutes: document.querySelectorAll('[data-settings-model-target]').length,
+        integrationTest: typeof window.desktop?.testIntegration === 'function',
+        templateColor: getComputedStyle(document.querySelector('[data-workflow-mode="software"]')).color,
+        templateBackground: getComputedStyle(document.querySelector('[data-workflow-mode="software"]')).backgroundColor
       };
     })()`);
     assert.equal(initial.nodes, 21);
     assert.ok(initial.managerLeft < initial.firstAgentLeft);
     assert.equal(initial.managerBranches, 10);
     assert.ok(initial.chat && initial.modelSelect && initial.importSkill);
+    assert.ok(initial.backButtons >= 10);
+    assert.equal(initial.agentRoutes, 11);
+    assert.equal(initial.integrationTest, true);
+    assert.notEqual(initial.templateColor, initial.templateBackground);
+
+    const dialogLayout = await client.evaluate(`(() => {
+      openWorkflowNodeDialog(currentWorkflow.nodes.find((node) => node.id === 'architect-output'));
+      const dialog = document.querySelector('#workflow-node-dialog');
+      const labels = [...dialog.querySelector('.form-row').children].map((item) => item.getBoundingClientRect());
+      const result = { overflow: dialog.scrollWidth - dialog.clientWidth, aligned: Math.abs(labels[0].top - labels[1].top) < 2, widths: labels.map((item) => item.width) };
+      dialog.close();
+      return result;
+    })()`);
+    assert.ok(dialogLayout.overflow <= 1);
+    assert.ok(dialogLayout.aligned && dialogLayout.widths.every((width) => width > 150));
 
     const managerRect = await client.evaluate(`(() => { const rect = document.querySelector('[data-workflow-node="commander"]').getBoundingClientRect(); return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }; })()`);
     await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: managerRect.x, y: managerRect.y, button: "left", clickCount: 1 });
@@ -111,26 +131,30 @@ async function main() {
       const id = 'smoke-custom-node';
       editor.customNodes = editor.customNodes.filter((node) => node.id !== id);
       editor.customNodes.push({ id, title:'冒烟测试节点', subtitle:'验证自定义节点', code:'TEST', type:'module', role:'', progress:20, x:1150, y:500, width:220 });
-      editor.customEdges = editor.customEdges.filter((edge) => edge.id !== 'smoke-edge');
-      editor.customEdges.push({ id:'smoke-edge', from:'frontend', to:id, kind:'branch' });
+      editor.customEdges = editor.customEdges.filter((edge) => edge.from !== 'frontend' || edge.to !== id);
       saveWorkflowEditor(); renderWorkflow(); return id;
     })()`);
     assert.equal(customId, "smoke-custom-node");
-    const customState = await client.evaluate(`({ node:Boolean(document.querySelector('[data-workflow-node="smoke-custom-node"]')), edge:Boolean(document.querySelector('[data-workflow-edge="smoke-edge"]')) })`);
+    const customState = await client.evaluate(`(() => { startWorkflowConnection('frontend'); updateWorkflowConnectionPreview({clientX:600,clientY:420}); const preview=document.querySelector('#workflow-link-preview'); const previewPath=preview.getAttribute('d') || ''; finishWorkflowConnection('smoke-custom-node'); const customEdge=currentWorkflow.edges.find((edge) => edge.custom && edge.from==='frontend' && edge.to==='smoke-custom-node'); const edge=document.querySelector('[data-workflow-edge="'+customEdge.id+'"]'); return { node:Boolean(document.querySelector('[data-workflow-node="smoke-custom-node"]')), edge:Boolean(edge), animation:getComputedStyle(edge).animationName, preview:previewPath }; })()`);
     assert.ok(customState.node && customState.edge);
+    assert.match(customState.animation, /workflowFlow/);
+    assert.match(customState.preview, /^M /);
 
     const contextRect = await client.evaluate(`(() => { const rect = document.querySelector('[data-workflow-node="frontend"]').getBoundingClientRect(); return { x:rect.x + 20, y:rect.y + 20 }; })()`);
     await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: contextRect.x, y: contextRect.y, button: "right", clickCount: 1 });
     await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: contextRect.x, y: contextRect.y, button: "right", clickCount: 1 });
     await delay(80);
     assert.equal(await client.evaluate("!document.querySelector('#workflow-context-menu').hidden"), true);
+    const menuPosition = await client.evaluate(`(() => { const rect=document.querySelector('#workflow-context-menu').getBoundingClientRect(); return {left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom,width:innerWidth,height:innerHeight}; })()`);
+    assert.ok(menuPosition.left >= 0 && menuPosition.top >= 0 && menuPosition.right <= menuPosition.width && menuPosition.bottom <= menuPosition.height);
+    assert.ok(Math.abs(menuPosition.left - contextRect.x) < 260 && Math.abs(menuPosition.top - contextRect.y) < 260);
 
     await client.evaluate("document.querySelector('[data-workflow-mode=\"image\"]').click(); true");
     await delay(150);
     const imageMode = await client.evaluate("({ mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length })");
     assert.equal(imageMode.mode, "image");
     assert.ok(imageMode.manager && imageMode.edges > 0);
-    console.log("通过：Electron 工作流模板、经理分支、拖动、节点、连线、右键、模型、对话与 Skill 入口");
+    console.log("通过：Electron 返回导航、模型路由、工作流颜色、弹窗对齐、拖动、动画连线与右键定位");
   } finally {
     client?.close();
     const exited = new Promise((resolve) => child.once("exit", resolve));

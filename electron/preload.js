@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   configureIntegrations: (payload) => ipcRenderer.invoke("integration:configure", payload),
   clearIntegrations: () => ipcRenderer.invoke("integration:clear"),
   getIntegrationStatus: () => ipcRenderer.invoke("integration:status"),
+  testIntegration: () => ipcRenderer.invoke("integration:test"),
   fetchDocument: (url) => ipcRenderer.invoke("integration:fetch-document", url),
   inspectRepository: (repository) => ipcRenderer.invoke("integration:inspect-repository", repository)
 }));

@@ -80,8 +80,15 @@ async function fetchDocument(value) {
 }
 
 function parseRepository(value) {
-  const input = String(value || "").trim().replace(/\.git$/, "");
-  const match = input.match(/(?:https:\/\/github\.com\/)?([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/);
+  const input = String(value || "").trim();
+  const normalized = input
+    .replace(/^git@github\.com:/i, "")
+    .replace(/^ssh:\/\/git@github\.com\//i, "")
+    .replace(/^https?:\/\/(?:www\.)?github\.com\//i, "")
+    .replace(/^github\.com\//i, "")
+    .split(/[?#]/)[0]
+    .replace(/\/+$/, "");
+  const match = normalized.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:\/(?:tree|blob|releases|issues|pull|actions|settings)(?:\/.*)?)?$/i);
   if (!match) throw new Error("请输入 owner/repository 或完整的 GitHub 仓库地址");
   return { owner: match[1], repository: match[2] };
 }
@@ -89,16 +96,44 @@ function parseRepository(value) {
 async function githubRequest(endpoint) {
   const headers = { accept: "application/vnd.github+json", "user-agent": "AI-Software-Team/0.10", "x-github-api-version": "2022-11-28" };
   if (githubToken) headers.authorization = `Bearer ${githubToken}`;
-  const { body } = await safeFetch(`https://api.github.com${endpoint}`, { headers });
-  return JSON.parse(body);
+  try {
+    const { body, response } = await safeFetch(`https://api.github.com${endpoint}`, { headers });
+    return { data: JSON.parse(body), headers: Object.fromEntries(response.headers.entries()) };
+  } catch (error) {
+    const message = String(error.message || error);
+    if (/401/.test(message)) throw new Error("GitHub 令牌无效或已过期");
+    if (/403/.test(message) && /rate limit/i.test(message)) throw new Error("GitHub 请求额度已用完，请配置有效令牌后重试");
+    if (/404/.test(message)) throw new Error("GitHub 仓库不存在，或当前令牌没有访问权限");
+    throw error;
+  }
+}
+
+async function testConnection() {
+  const endpoint = githubToken ? "/user" : "/rate_limit";
+  const { data, headers } = await githubRequest(endpoint);
+  return {
+    connected: true,
+    authenticated: Boolean(githubToken),
+    account: githubToken ? data.login || "已认证账户" : "公开访问",
+    remaining: Number(headers["x-ratelimit-remaining"] || data.rate?.remaining || 0),
+    limit: Number(headers["x-ratelimit-limit"] || data.rate?.limit || 0),
+  };
 }
 
 async function inspectRepository(value) {
   const { owner, repository } = parseRepository(value);
-  const metadata = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`);
-  const branch = encodeURIComponent(metadata.default_branch);
-  const tree = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/git/trees/${branch}?recursive=1`);
-  const files = (tree.tree || []).filter((item) => item.type === "blob").slice(0, 500).map((item) => ({ path: item.path, size: item.size || 0, sha: item.sha }));
+  const { data: metadata } = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`);
+  let tree = { tree: [], truncated: false };
+  if (metadata.default_branch) {
+    try {
+      const result = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/git/trees/${encodeURIComponent(metadata.default_branch)}?recursive=1`);
+      tree = result.data;
+    } catch (error) {
+      if (!/仓库不存在/.test(error.message)) throw error;
+    }
+  }
+  const blobs = (tree.tree || []).filter((item) => item.type === "blob");
+  const files = blobs.slice(0, 500).map((item) => ({ path: item.path, size: item.size || 0, sha: item.sha }));
   return {
     id: `${owner}/${repository}`,
     name: metadata.full_name,
@@ -109,9 +144,9 @@ async function inspectRepository(value) {
     stars: metadata.stargazers_count || 0,
     private: Boolean(metadata.private),
     files,
-    truncated: Boolean(tree.truncated) || (tree.tree || []).filter((item) => item.type === "blob").length > files.length,
+    truncated: Boolean(tree.truncated) || blobs.length > files.length,
     fetchedAt: new Date().toISOString()
   };
 }
 
-module.exports = { configure, clear, status, fetchDocument, inspectRepository, validatePublicUrl };
+module.exports = { configure, clear, status, testConnection, fetchDocument, inspectRepository, validatePublicUrl, parseRepository };
