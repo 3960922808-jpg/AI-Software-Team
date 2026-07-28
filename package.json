@@ -1,13 +1,13 @@
 {
   "name": "ai-software-team",
-  "version": "0.17.0",
+  "version": "0.18.0",
   "description": "Windows desktop multi-agent software development workspace",
   "main": "electron/main.js",
   "author": "AI Software Team",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/workflow-state.test.js && node tests/model-settings-store.test.js && node tests/model-pool-store.test.js && node tests/plugin-runtime.test.js && node tests/execution-runtime.test.js && node tests/model-runtime.integration.test.js && node tests/delivery-runtime.test.js && node tests/integration-runtime.test.js",
+    "test": "node tests/workflow-state.test.js && node tests/model-settings-store.test.js && node tests/media-model-settings.test.js && node tests/workspace-settings-store.test.js && node tests/model-pool-store.test.js && node tests/plugin-runtime.test.js && node tests/execution-runtime.test.js && node tests/model-runtime.integration.test.js && node tests/delivery-runtime.test.js && node tests/integration-runtime.test.js",
     "test:electron": "node tests/electron-workflow-smoke.test.js",
     "build:windows": "electron-builder --win nsis zip",
     "pack:windows": "electron-builder --win --dir"
@@ -22,7 +22,7 @@
     "asar": true,
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "release-v0.17"
+      "output": "release-v0.18"
     },
     "files": [
       "index.html",

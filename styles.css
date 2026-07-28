@@ -386,20 +386,12 @@ progress::-webkit-progress-value { transition:width .55s var(--ease); }
 .sandbox-toolbar > p { min-width:0; margin:0 0 7px; color:#666; font-size:10px; line-height:1.45; }
 .sandbox-toolbar > p.success { color:#176147; }
 .sandbox-toolbar > p.error { color:#9b3535; }
-.sandbox-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.25fr); gap:18px; margin-top:20px; }
-.sandbox-policy-panel,.demo-panel { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--glass); box-shadow:var(--shadow); }
+.sandbox-layout { display:grid; grid-template-columns:1fr; gap:18px; margin-top:20px; }
+.sandbox-policy-panel { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--glass); box-shadow:var(--shadow); }
 .sandbox-policy-list { margin:0; padding:0 16px 14px; }
 .sandbox-policy-list > div { display:grid; grid-template-columns:92px minmax(0,1fr); gap:12px; padding:13px 0; border-top:1px solid #e8e8ea; }
 .sandbox-policy-list dt { color:#777; font-size:10px; }
 .sandbox-policy-list dd { overflow-wrap:anywhere; margin:0; color:#222; font-size:11px; font-weight:700; }
-.demo-list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:0 16px 16px; }
-.demo-list button { display:grid; grid-template-columns:32px minmax(0,1fr); gap:9px; align-items:start; min-height:120px; padding:15px 13px; border:0; border-top:1px solid #e8e8ea; border-right:1px solid #e8e8ea; border-radius:0; background:transparent; text-align:left; box-shadow:none; }
-.demo-list button:last-child { border-right:0; }
-.demo-list button:hover { transform:none; background:#f7f7f8; }
-.demo-list button > b { display:grid; place-items:center; width:29px; height:29px; border:1px solid #d5d5d8; border-radius:6px; background:#fff; font-size:9px; }
-.demo-list button span,.demo-list button strong,.demo-list button small { display:block; min-width:0; }
-.demo-list button strong { font-size:12px; }
-.demo-list button small { margin-top:7px; color:#747478; font-size:9px; line-height:1.5; }
 .sandbox-run-section { margin-top:28px; }
 .sandbox-run-list { display:grid; gap:10px; margin-top:14px; }
 .sandbox-run-card { overflow:hidden; border:1px solid var(--line); border-radius:8px; background:rgba(255,255,255,.84); box-shadow:0 6px 18px rgba(0,0,0,.035); }
@@ -423,7 +415,17 @@ progress::-webkit-progress-value { transition:width .55s var(--ease); }
 .sandbox-check-state.failed { color:#9b3535; border-color:#e0bcbc; }
 .sandbox-check-empty { display:block !important; color:#777; font-size:10px; }
 @media (max-width:1180px) { .sandbox-toolbar { grid-template-columns:1fr auto; }.sandbox-toolbar > p { grid-column:1 / -1; }.sandbox-layout { grid-template-columns:1fr; } }
-@media (max-width:800px) { .sandbox-summary { grid-template-columns:1fr 1fr; }.sandbox-summary > div { border-bottom:1px solid var(--line); }.sandbox-toolbar { grid-template-columns:1fr; }.sandbox-actions { flex-wrap:wrap; }.demo-list { grid-template-columns:1fr; }.demo-list button { min-height:82px; border-right:0; } }
+@media (max-width:800px) { .sandbox-summary { grid-template-columns:1fr 1fr; }.sandbox-summary > div { border-bottom:1px solid var(--line); }.sandbox-toolbar { grid-template-columns:1fr; }.sandbox-actions { flex-wrap:wrap; } }
+
+.media-model-settings { margin-top:18px; }
+.media-model-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.media-model-form { min-width:0; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:#fff; box-shadow:var(--shadow); }
+.media-model-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 14px; padding:4px 16px 16px; }
+.media-model-fields label { min-width:0; }
+.media-model-fields label:nth-child(n+2) { grid-column:1 / -1; }
+.media-model-fields input,.media-model-fields select { width:100%; min-width:0; }
+.media-model-form .model-save-feedback { margin:0; }
+@media (max-width:900px) { .media-model-grid,.media-model-fields { grid-template-columns:1fr; }.media-model-fields label:nth-child(n+2) { grid-column:auto; } }
 
 .plugin-section { margin-top:30px; }
 .plugin-list { margin-top:14px; border-top:1px solid var(--line); }

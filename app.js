@@ -58,12 +58,6 @@ const skillCatalog = [
   ["SE", "安全专家 Agent", [["威胁建模", "识别资产、边界与攻击路径"], ["依赖审查", "检查组件与供应链风险"], ["安全验收", "验证认证、授权和数据保护"]]],
   ["DO", "DevOps Agent", [["构建流水线", "配置可重复的构建与发布"], ["部署编排", "管理环境与版本交付"], ["运行监控", "建立日志、指标和告警"]]]
 ];
-const demoCatalog = {
-  website: { title: "案例：生成响应式博客网站", agent: "前端 Agent", description: "生成一个完整可运行的响应式博客网站。必须包含首页、文章列表、文章详情、搜索或筛选交互、空状态、错误状态、自动化测试、README 和明确启动命令。使用本地资源，不依赖远程 CDN。" },
-  desktop: { title: "案例：生成 Windows 桌面工具", agent: "技术主管 Agent", description: "生成一个可运行的 Electron Windows 桌面效率工具。必须包含主进程、预加载安全桥、界面、文件读写功能、输入校验、测试、README、开发启动命令和 Windows 打包脚本。" },
-  api: { title: "案例：生成任务管理 API", agent: "后端 Agent", description: "生成一个可运行的任务管理 API 服务。必须包含健康检查、任务增删改查、输入校验、统一错误响应、本地数据层、自动化接口测试、README、环境变量示例和启动命令。" },
-};
-
 function loadJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
 let tasks = loadJson(storageKeys.tasks, []);
 if (!Array.isArray(tasks)) tasks = [];
@@ -103,6 +97,7 @@ let workspacePath = null;
 let deliveryReport = null;
 let lastReleasePath = null;
 let modelPoolState = { profiles: [], assignments: {} };
+let mediaModelState = { image: { configured: false }, video: { configured: false } };
 let sandboxPolicy = null;
 let pluginState = [];
 let interfaceMode = loadJson(storageKeys.interfaceMode, "studio") === "workflow" ? "workflow" : "studio";
@@ -216,6 +211,12 @@ async function refreshSandboxPolicy() {
 
 function workflowStateLabel(state) {
   return { idle: "未进入", queued: "等待", active: "执行中", done: "已完成", failed: "已阻断" }[state] || "未知";
+}
+if (!localStorage.getItem("ai-software-team.office-migration-v4-user-tasks")) {
+  const builtInDemoTitles = new Set(["案例：生成响应式博客网站", "案例：生成 Windows 桌面工具", "案例：生成任务管理 API 服务", "案例：生成任务管理 API"]);
+  tasks = tasks.filter((task) => !task.demoType && !builtInDemoTitles.has(task.title));
+  localStorage.setItem("ai-software-team.office-migration-v4-user-tasks", "done");
+  localStorage.setItem(storageKeys.tasks, JSON.stringify(tasks));
 }
 
 function getWorkflowModeState(mode = workflowEditorState.activeMode || "software") {
@@ -819,6 +820,81 @@ function getTeamContext() {
 }
 function setModelFeedback(message, type = "") { const feedback = document.querySelector("#model-save-feedback"); feedback.textContent = message; feedback.className = `model-save-feedback ${type}`.trim(); }
 
+const mediaProviderDefaults = {
+  image: {
+    openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-image-1" },
+    stability: { baseUrl: "https://api.stability.ai/v2beta", model: "stable-image-core" },
+    google: { baseUrl: "https://generativelanguage.googleapis.com", model: "imagen-4.0-generate-001" },
+    custom: { baseUrl: "", model: "" }
+  },
+  video: {
+    openai: { baseUrl: "https://api.openai.com/v1", model: "sora-2" },
+    kling: { baseUrl: "https://api.klingai.com/v1", model: "kling-v2-1" },
+    runway: { baseUrl: "https://api.dev.runwayml.com/v1", model: "gen4_turbo" },
+    custom: { baseUrl: "", model: "" }
+  }
+};
+function mediaForm(kind) { return document.querySelector(`#${kind}-model-form`); }
+function setMediaModelFeedback(kind, message, type = "") {
+  const feedback = document.querySelector(`#${kind}-model-feedback`);
+  feedback.textContent = message;
+  feedback.className = `model-save-feedback ${type}`.trim();
+}
+function applyMediaProviderDefaults(kind) {
+  const form = mediaForm(kind);
+  const defaults = mediaProviderDefaults[kind]?.[form.provider.value] || { baseUrl: "", model: "" };
+  form.baseUrl.value = defaults.baseUrl;
+  form.model.value = defaults.model;
+}
+function renderMediaModel(kind) {
+  const form = mediaForm(kind);
+  const state = mediaModelState[kind] || { configured: false };
+  const badge = form.querySelector("[data-media-state]");
+  badge.classList.toggle("connected", Boolean(state.configured));
+  badge.textContent = state.configured ? `${state.model} 已保存` : "未配置";
+  if (!state.configured) {
+    form.reset();
+    applyMediaProviderDefaults(kind);
+    form.apiKey.placeholder = kind === "image" ? "输入生图专用密钥" : "输入视频专用密钥";
+    form.querySelector("[data-media-key-hint]").textContent = kind === "image" ? "不会使用主模型或视频 API Key" : "不会使用主模型或生图 API Key";
+    return;
+  }
+  form.provider.value = state.provider || "openai";
+  form.baseUrl.value = state.baseUrl || "";
+  form.model.value = state.model || "";
+  form.apiKey.value = "";
+  form.apiKey.placeholder = "已安全保存，留空则继续使用";
+  form.querySelector("[data-media-key-hint]").textContent = "此媒体密钥已由 Windows 系统加密保存";
+}
+async function loadMediaModels() {
+  if (!window.desktop?.getMediaModels) {
+    renderMediaModel("image");
+    renderMediaModel("video");
+    return;
+  }
+  try {
+    mediaModelState = await window.desktop.getMediaModels();
+    for (const kind of ["image", "video"]) {
+      renderMediaModel(kind);
+      if (mediaModelState[kind]?.configured) setMediaModelFeedback(kind, "配置已安全保存在本机，重启后会自动恢复", "success");
+    }
+  } catch (error) {
+    for (const kind of ["image", "video"]) setMediaModelFeedback(kind, `读取配置失败：${error.message}`, "error");
+  }
+}
+async function saveMediaModel(kind, form) {
+  if (!window.desktop?.configureMediaModel) throw new Error("媒体 API 配置仅在 Electron 桌面版中可用");
+  const data = new FormData(form);
+  const payload = {
+    provider: String(data.get("provider") || "").trim(),
+    baseUrl: String(data.get("baseUrl") || "").trim(),
+    model: String(data.get("model") || "").trim(),
+    apiKey: String(data.get("apiKey") || "").trim()
+  };
+  mediaModelState = await window.desktop.configureMediaModel(kind, payload);
+  renderMediaModel(kind);
+}
+
 function setModelPoolFeedback(message, type = "") {
   const feedback = document.querySelector("#model-pool-feedback");
   feedback.textContent = message;
@@ -1009,17 +1085,6 @@ async function applyChatAction(index) {
 function selectedSandboxTask() {
   const taskId = document.querySelector("#sandbox-task-select").value;
   return tasks.find((task) => task.id === taskId) || null;
-}
-
-function createDemoTask(type) {
-  const demo = demoCatalog[type];
-  if (!demo) return;
-  const task = { id: crypto.randomUUID(), title: demo.title, description: demo.description, agent: demo.agent, priority: "high", status: "todo", createdAt: new Date().toISOString(), demoType: type };
-  tasks.unshift(task);
-  saveTasks();
-  eventLog.unshift(`已创建可运行案例“${demo.title}”`);
-  render();
-  activateView("orchestrator");
 }
 
 async function refreshSelectedGitStatus() {
@@ -1229,7 +1294,6 @@ document.querySelector("#workflow-zoom-in").addEventListener("click", () => setW
 document.querySelector("#workflow-center").addEventListener("click", centerWorkflowCanvas);
 document.querySelector("#workflow-run-button").addEventListener("click", () => { if (selectedWorkflowTaskId) executeNextTask(selectedWorkflowTaskId); });
 
-document.querySelector(".demo-list").addEventListener("click", (event) => { const button = event.target.closest("[data-demo]"); if (button) createDemoTask(button.dataset.demo); });
 document.querySelector("#auto-git-toggle").addEventListener("change", (event) => { executionSettings.autoGit = event.target.checked; saveExecutionSettings(); });
 document.querySelector("#refresh-sandbox-button").addEventListener("click", async () => { await refreshSandboxPolicy(); await refreshSelectedGitStatus(); });
 document.querySelector("#sandbox-task-select").addEventListener("change", refreshSelectedGitStatus);
@@ -1478,9 +1542,34 @@ document.querySelector("#import-plugin-button").addEventListener("click", async 
   } catch (error) { state.textContent = `Skill 导入失败：${error.message}`; state.className = "plugin-note error"; }
 });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
-document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const button = document.querySelector("#save-model-button"); const config = getModelFormConfig(); button.disabled = true; button.textContent = "保存中"; setModelFeedback("正在调用 Windows 系统加密服务…"); try { const result = await configureRuntime(config); localStorage.removeItem("ai-software-team.model-settings"); event.currentTarget.apiKey.value = ""; applyModelSettings(result); setModelFeedback("保存成功，关闭并重新打开软件后仍可使用", "success"); eventLog.unshift(`灵灵已保存并连接 ${config.model}`); render(); } catch (error) { const status = await window.desktop?.getModelStatus?.().catch(() => null); if (status) setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"); setModelFeedback(`保存失败：${error.message}`, "error"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } finally { button.disabled = false; button.textContent = "保存连接配置"; } });
+document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const button = document.querySelector("#save-model-button"); const config = getModelFormConfig(); button.disabled = true; button.textContent = "保存中"; setModelFeedback("正在调用 Windows 系统加密服务…"); try { const result = await configureRuntime(config); localStorage.removeItem("ai-software-team.model-settings"); form.apiKey.value = ""; applyModelSettings(result); setModelFeedback("保存成功，关闭并重新打开软件后仍可使用", "success"); eventLog.unshift(`灵灵已保存并连接 ${config.model}`); render(); } catch (error) { const status = await window.desktop?.getModelStatus?.().catch(() => null); if (status) setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"); setModelFeedback(`保存失败：${error.message}`, "error"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } finally { button.disabled = false; button.textContent = "保存连接配置"; } });
 document.querySelector("#test-api-button").addEventListener("click", async () => { const button = document.querySelector("#test-api-button"); button.disabled = true; button.textContent = "测试中"; setModelFeedback("正在保存当前配置并测试模型响应…"); try { const config = getModelFormConfig(); const configured = await configureRuntime(config); document.querySelector("#model-settings-form").apiKey.value = ""; applyModelSettings(configured); const result = await window.desktop.testModel(); setRuntimeState(true, `${configured.model} 已连接`); setModelFeedback(`连接测试成功：${result.message}`, "success"); eventLog.unshift(`连接测试成功：${result.message}`); } catch (error) { setModelFeedback(`连接测试失败：${error.message}`, "error"); eventLog.unshift(`连接测试失败：${error.message}`); } finally { button.disabled = false; button.textContent = "测试连接"; renderOrchestrator(); } });
 document.querySelector("#clear-api-button").addEventListener("click", async () => { try { await window.desktop?.clearModel?.(); localStorage.removeItem("ai-software-team.model-settings"); sessionStorage.removeItem("ai-software-team.model-settings"); const form = document.querySelector("#model-settings-form"); form.reset(); form.apiKey.placeholder = "输入密钥"; document.querySelector("#api-key-hint").textContent = "密钥将由 Windows 系统加密后保存在本机"; applyProviderDefaults(); setRuntimeState(false, "模型待配置"); setModelFeedback("已删除本机保存的模型配置", "success"); } catch (error) { setModelFeedback(`清除失败：${error.message}`, "error"); } });
+document.querySelectorAll("[data-media-kind]").forEach((form) => {
+  const kind = form.dataset.mediaKind;
+  form.provider.addEventListener("change", () => applyMediaProviderDefaults(kind));
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const currentForm = event.currentTarget;
+    const button = currentForm.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = "保存中";
+    setMediaModelFeedback(kind, "正在加密并保存独立密钥…");
+    try {
+      await saveMediaModel(kind, currentForm);
+      setMediaModelFeedback(kind, "保存成功，此配置不会与其他模型共享", "success");
+    } catch (error) { setMediaModelFeedback(kind, `保存失败：${error.message}`, "error"); }
+    finally { button.disabled = false; button.textContent = kind === "image" ? "保存生图配置" : "保存视频配置"; }
+  });
+  form.querySelector("[data-clear-media-model]").addEventListener("click", async () => {
+    try {
+      if (!window.desktop?.clearMediaModel) throw new Error("媒体 API 配置仅在 Electron 桌面版中可用");
+      mediaModelState = await window.desktop.clearMediaModel(kind);
+      renderMediaModel(kind);
+      setMediaModelFeedback(kind, "已删除本机保存的独立配置", "success");
+    } catch (error) { setMediaModelFeedback(kind, `清除失败：${error.message}`, "error"); }
+  });
+});
 
 const memoryDialog = document.querySelector("#memory-dialog");
 document.querySelector("#new-memory-button").addEventListener("click", () => memoryDialog.showModal());
@@ -1505,6 +1594,6 @@ setInterval(() => renderOffice(), 3000);
 if (!window.WorkflowState?.templates?.[workflowEditorState.activeMode]) workflowEditorState.activeMode = "software";
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.workflowMode === workflowEditorState.activeMode));
 selectedWorkflowNodeId = window.WorkflowState?.templates?.[workflowEditorState.activeMode]?.nodes.find((node) => node.manager)?.id || "commander";
-installViewBackButtons(); loadModelSettings(); loadModelPool(); loadPlugins(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
+installViewBackButtons(); loadModelSettings(); loadMediaModels(); loadModelPool(); loadPlugins(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));

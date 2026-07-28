@@ -8,11 +8,14 @@ const executionRuntime = require("./execution-runtime");
 const { createModelSettingsStore } = require("./model-settings-store");
 const { createModelPoolStore } = require("./model-pool-store");
 const { createIntegrationSettingsStore } = require("./integration-settings-store");
+const { createWorkspaceSettingsStore } = require("./workspace-settings-store");
 const { createPluginRuntime } = require("./plugin-runtime");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
 let integrationSettingsStore = null;
+let workspaceSettingsStore = null;
+let mediaModelStores = null;
 let pluginRuntime = null;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
@@ -69,6 +72,11 @@ function initializeModelSettings() {
     filePath: path.join(app.getPath("userData"), "integration-settings.json"),
     ...encryption,
   });
+  mediaModelStores = {
+    image: createModelSettingsStore({ filePath: path.join(app.getPath("userData"), "image-model-settings.json"), ...encryption }),
+    video: createModelSettingsStore({ filePath: path.join(app.getPath("userData"), "video-model-settings.json"), ...encryption }),
+  };
+  workspaceSettingsStore = createWorkspaceSettingsStore({ filePath: path.join(app.getPath("userData"), "workspace-settings.json") });
   pluginRuntime = createPluginRuntime({
     directoryPath: path.join(app.getPath("userData"), "plugins"),
     statePath: path.join(app.getPath("userData"), "plugins-state.json"),
@@ -87,6 +95,8 @@ function initializeModelSettings() {
   modelRuntime.configurePool(modelPoolStore.load());
   const integrations = integrationSettingsStore.load();
   if (integrations.githubToken) integrationRuntime.configure(integrations);
+  const savedWorkspace = workspaceSettingsStore.load();
+  if (savedWorkspace.path) modelRuntime.setWorkspace(savedWorkspace.path);
 }
 
 const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
@@ -262,6 +272,22 @@ if (!app.requestSingleInstanceLock()) {
       return modelPoolStore.status();
     });
     ipcMain.handle("model-pool:test-profile", (_event, profileId) => modelRuntime.testProfile(profileId));
+    ipcMain.handle("media-model:get", () => {
+      if (!mediaModelStores) initializeModelSettings();
+      return { image: mediaModelStores.image.status(), video: mediaModelStores.video.status() };
+    });
+    ipcMain.handle("media-model:configure", (_event, kind, payload) => {
+      if (!mediaModelStores) initializeModelSettings();
+      if (!mediaModelStores[kind]) throw new Error("媒体模型类型无效");
+      mediaModelStores[kind].persist(payload);
+      return { image: mediaModelStores.image.status(), video: mediaModelStores.video.status() };
+    });
+    ipcMain.handle("media-model:clear", (_event, kind) => {
+      if (!mediaModelStores) initializeModelSettings();
+      if (!mediaModelStores[kind]) throw new Error("媒体模型类型无效");
+      mediaModelStores[kind].clear();
+      return { image: mediaModelStores.image.status(), video: mediaModelStores.video.status() };
+    });
     ipcMain.handle("audit:export", async (_event, payload) => {
       const content = `${JSON.stringify(payload, null, 2)}\n`;
       if (Buffer.byteLength(content, "utf8") > 5 * 1024 * 1024) throw new Error("审计报告超过 5MB 限制");
@@ -296,10 +322,16 @@ if (!app.requestSingleInstanceLock()) {
       return { opened: true, path: target };
     });
     ipcMain.handle("workspace:get", () => modelRuntime.getWorkspace());
-    ipcMain.handle("workspace:set", (_event, selectedPath) => modelRuntime.setWorkspace(selectedPath));
+    ipcMain.handle("workspace:set", (_event, selectedPath) => {
+      if (!selectedPath) { workspaceSettingsStore.clear(); return modelRuntime.setWorkspace(null); }
+      const saved = workspaceSettingsStore.persist(selectedPath);
+      return modelRuntime.setWorkspace(saved.path);
+    });
     ipcMain.handle("workspace:choose", async () => {
       const result = await dialog.showOpenDialog({ title: "选择 Agent 产物工作目录", properties: ["openDirectory", "createDirectory"] });
-      return result.canceled ? modelRuntime.getWorkspace() : modelRuntime.setWorkspace(result.filePaths[0]);
+      if (result.canceled) return modelRuntime.getWorkspace();
+      const saved = workspaceSettingsStore.persist(result.filePaths[0]);
+      return modelRuntime.setWorkspace(saved.path);
     });
     ipcMain.handle("delivery:inspect", () => deliveryRuntime.inspect(modelRuntime.getWorkspace().path));
     ipcMain.handle("delivery:create", (_event, payload) => deliveryRuntime.createRelease(modelRuntime.getWorkspace().path, payload));

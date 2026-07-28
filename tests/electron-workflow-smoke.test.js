@@ -55,8 +55,11 @@ class CdpClient {
 }
 
 async function main() {
+  const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
+  assert.equal(appSource.includes("event.currentTarget.apiKey"), false);
   const cleanupDefault = process.env.SMOKE_CLEAN_DEFAULT === "1";
   const userData = cleanupDefault ? null : fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-electron-smoke-"));
+  const workspaceDirectory = cleanupDefault ? null : fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-artifacts-"));
   const executable = process.env.SMOKE_EXECUTABLE || electron;
   const args = process.env.SMOKE_EXECUTABLE ? [`--remote-debugging-port=${port}`] : [root, `--remote-debugging-port=${port}`];
   if (userData) args.push(`--user-data-dir=${userData}`);
@@ -94,6 +97,11 @@ async function main() {
         backButtons: document.querySelectorAll('[data-view-back]').length,
         agentRoutes: document.querySelectorAll('[data-settings-model-target]').length,
         integrationTest: typeof window.desktop?.testIntegration === 'function',
+        mediaGet: typeof window.desktop?.getMediaModels === 'function',
+        mediaConfigure: typeof window.desktop?.configureMediaModel === 'function',
+        imageModelForm: Boolean(document.querySelector('#image-model-form')),
+        videoModelForm: Boolean(document.querySelector('#video-model-form')),
+        demoPanels: document.querySelectorAll('.demo-panel,[data-demo]').length,
         templateColor: getComputedStyle(document.querySelector('[data-workflow-mode="software"]')).color,
         templateBackground: getComputedStyle(document.querySelector('[data-workflow-mode="software"]')).backgroundColor
       };
@@ -105,7 +113,57 @@ async function main() {
     assert.ok(initial.backButtons >= 10);
     assert.equal(initial.agentRoutes, 11);
     assert.equal(initial.integrationTest, true);
+    assert.ok(initial.mediaGet && initial.mediaConfigure);
+    assert.ok(initial.imageModelForm && initial.videoModelForm);
+    assert.equal(initial.demoPanels, 0);
     assert.notEqual(initial.templateColor, initial.templateBackground);
+
+    await client.evaluate(`(() => {
+      activateView('settings');
+      const form = document.querySelector('#model-settings-form');
+      form.provider.value = 'custom';
+      form.baseUrl.value = 'https://main.example/v1';
+      form.model.value = 'main-smoke-model';
+      form.apiKey.value = 'main-smoke-key';
+      form.requestSubmit();
+      return true;
+    })()`);
+    await delay(250);
+    const mainSave = await client.evaluate(`(async () => ({ status: await window.desktop.getModelStatus(), feedback: document.querySelector('#model-save-feedback').textContent }))()`);
+    assert.equal(mainSave.status.configured, true);
+    assert.match(mainSave.feedback, /保存成功/);
+
+    await client.evaluate(`(() => {
+      const image = document.querySelector('#image-model-form');
+      image.provider.value = 'custom';
+      image.baseUrl.value = 'https://image.example/v1';
+      image.model.value = 'image-smoke-model';
+      image.apiKey.value = 'image-smoke-key';
+      image.requestSubmit();
+      const video = document.querySelector('#video-model-form');
+      video.provider.value = 'custom';
+      video.baseUrl.value = 'https://video.example/v1';
+      video.model.value = 'video-smoke-model';
+      video.apiKey.value = 'video-smoke-key';
+      video.requestSubmit();
+      return true;
+    })()`);
+    await delay(300);
+    const mediaSaved = await client.evaluate(`(async () => ({ models: await window.desktop.getMediaModels(), imageFeedback: document.querySelector('#image-model-feedback').textContent, videoFeedback: document.querySelector('#video-model-feedback').textContent }))()`);
+    assert.equal(mediaSaved.models.image.configured, true);
+    assert.equal(mediaSaved.models.video.configured, true);
+    assert.match(mediaSaved.imageFeedback, /保存成功/);
+    assert.match(mediaSaved.videoFeedback, /保存成功/);
+
+    await client.evaluate("document.querySelector('#image-model-form [data-clear-media-model]').click(); true");
+    await delay(180);
+    const mediaCleared = await client.evaluate("window.desktop.getMediaModels()");
+    assert.equal(mediaCleared.image.configured, false);
+    assert.equal(mediaCleared.video.configured, true);
+
+    const selectedWorkspace = await client.evaluate(`(async () => { const result = await window.desktop.setWorkspace(${JSON.stringify(workspaceDirectory)}); setWorkspaceState(result.path); return { path: result.path, input: document.querySelector('#workspace-path').value }; })()`);
+    assert.equal(selectedWorkspace.path, path.resolve(workspaceDirectory));
+    assert.equal(selectedWorkspace.input, path.resolve(workspaceDirectory));
 
     const dialogLayout = await client.evaluate(`(() => {
       openWorkflowNodeDialog(currentWorkflow.nodes.find((node) => node.id === 'architect-output'));
@@ -154,7 +212,7 @@ async function main() {
     const imageMode = await client.evaluate("({ mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length })");
     assert.equal(imageMode.mode, "image");
     assert.ok(imageMode.manager && imageMode.edges > 0);
-    console.log("通过：Electron 返回导航、模型路由、工作流颜色、弹窗对齐、拖动、动画连线与右键定位");
+    console.log("通过：Electron 独立媒体配置、用户任务、返回导航、模型路由、拖动、动画连线与右键定位");
   } finally {
     client?.close();
     const exited = new Promise((resolve) => child.once("exit", resolve));
@@ -166,6 +224,7 @@ async function main() {
         catch { if (attempt < 4) await delay(200); }
       }
     }
+    if (workspaceDirectory) fs.rmSync(workspaceDirectory, { recursive: true, force: true });
   }
 }
 
