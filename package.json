@@ -1,12 +1,13 @@
 {
   "name": "ai-software-team",
-  "version": "0.12.0",
+  "version": "0.14.0",
   "description": "Windows desktop multi-agent software development workspace",
   "main": "electron/main.js",
   "author": "AI Software Team",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
+    "test": "node tests/model-settings-store.test.js && node tests/model-pool-store.test.js && node tests/plugin-runtime.test.js && node tests/execution-runtime.test.js && node tests/model-runtime.integration.test.js && node tests/delivery-runtime.test.js && node tests/integration-runtime.test.js",
     "build:windows": "electron-builder --win nsis zip",
     "pack:windows": "electron-builder --win --dir"
   },
@@ -18,8 +19,9 @@
     "appId": "com.aisoftwareteam.desktop",
     "productName": "AI Software Team",
     "asar": true,
+    "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "release-v0.12"
+      "output": "release-v0.14"
     },
     "files": [
       "index.html",
@@ -33,12 +35,12 @@
       "package.json"
     ],
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "target": [
         { "target": "nsis", "arch": ["x64"] },
         { "target": "zip", "arch": ["x64"] }
-      ]
-      ,"artifactName": "${productName}-${version}-${arch}.${ext}"
+      ],
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "nsis": {
       "artifactName": "${productName}-${version}-${arch}-setup.${ext}",

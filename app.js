@@ -4,7 +4,8 @@ const storageKeys = {
   memory: "ai-software-team.memory",
   knowledge: "ai-software-team.knowledge",
   deployments: "ai-software-team.deployments",
-  externalResources: "ai-software-team.external-resources"
+  externalResources: "ai-software-team.external-resources",
+  executionSettings: "ai-software-team.execution-settings"
 };
 
 const roleAgents = [
@@ -53,6 +54,11 @@ const skillCatalog = [
   ["SE", "安全专家 Agent", [["威胁建模", "识别资产、边界与攻击路径"], ["依赖审查", "检查组件与供应链风险"], ["安全验收", "验证认证、授权和数据保护"]]],
   ["DO", "DevOps Agent", [["构建流水线", "配置可重复的构建与发布"], ["部署编排", "管理环境与版本交付"], ["运行监控", "建立日志、指标和告警"]]]
 ];
+const demoCatalog = {
+  website: { title: "案例：生成响应式博客网站", agent: "前端 Agent", description: "生成一个完整可运行的响应式博客网站。必须包含首页、文章列表、文章详情、搜索或筛选交互、空状态、错误状态、自动化测试、README 和明确启动命令。使用本地资源，不依赖远程 CDN。" },
+  desktop: { title: "案例：生成 Windows 桌面工具", agent: "技术主管 Agent", description: "生成一个可运行的 Electron Windows 桌面效率工具。必须包含主进程、预加载安全桥、界面、文件读写功能、输入校验、测试、README、开发启动命令和 Windows 打包脚本。" },
+  api: { title: "案例：生成任务管理 API", agent: "后端 Agent", description: "生成一个可运行的任务管理 API 服务。必须包含健康检查、任务增删改查、输入校验、统一错误响应、本地数据层、自动化接口测试、README、环境变量示例和启动命令。" },
+};
 
 function loadJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
 let tasks = loadJson(storageKeys.tasks, []);
@@ -62,6 +68,7 @@ let memories = loadJson(storageKeys.memory, []);
 let knowledgeDocuments = loadJson(storageKeys.knowledge, []);
 let deploymentRecords = loadJson(storageKeys.deployments, []);
 let externalResources = loadJson(storageKeys.externalResources, []);
+let executionSettings = loadJson(storageKeys.executionSettings, { autoGit: true });
 if (!localStorage.getItem("ai-software-team.office-migration-v1")) {
   tasks = tasks.filter((task) => !["t1", "t2", "t3"].includes(task.id));
   memories = memories.filter((item) => item.id !== "m1");
@@ -90,12 +97,21 @@ let chatMessages = [];
 let workspacePath = null;
 let deliveryReport = null;
 let lastReleasePath = null;
+let modelPoolState = { profiles: [], assignments: {} };
+let sandboxPolicy = null;
+let pluginState = [];
+
+const modelPoolTargets = [
+  ["commander", "CO", "主 Agent", "任务拆解、路由与最终审查"],
+  ...roleAgents.map(([code, role, specialty]) => [role, code, role, specialty]),
+];
 
 function saveTasks() { localStorage.setItem(storageKeys.tasks, JSON.stringify(tasks)); }
 function saveAgents() { localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents)); }
 function saveMemory() { localStorage.setItem(storageKeys.memory, JSON.stringify(memories)); localStorage.setItem(storageKeys.knowledge, JSON.stringify(knowledgeDocuments)); }
 function saveDeployments() { localStorage.setItem(storageKeys.deployments, JSON.stringify(deploymentRecords)); }
 function saveExternalResources() { localStorage.setItem(storageKeys.externalResources, JSON.stringify(externalResources)); }
+function saveExecutionSettings() { localStorage.setItem(storageKeys.executionSettings, JSON.stringify(executionSettings)); }
 function escapeHtml(value) { const node = document.createElement("div"); node.textContent = value ?? ""; return node.innerHTML; }
 
 function getAgentStatus(agent) {
@@ -124,6 +140,55 @@ function renderOffice() {
   }).join("");
 }
 
+function generatedTasks() {
+  return tasks.filter((task) => task.taskRoot || (Array.isArray(task.artifacts) && task.artifacts.length));
+}
+
+function renderSandbox() {
+  const select = document.querySelector("#sandbox-task-select");
+  if (!select) return;
+  const current = select.value;
+  const generated = generatedTasks();
+  select.innerHTML = generated.length ? generated.map((task) => `<option value="${escapeHtml(task.id)}">${escapeHtml(task.title)}</option>`).join("") : '<option value="">暂无已生成工程</option>';
+  if (generated.some((task) => task.id === current)) select.value = current;
+  document.querySelector("#auto-git-toggle").checked = executionSettings.autoGit !== false;
+  const runEntries = tasks.flatMap((task) => (task.runs || []).map((run) => ({ task, run })));
+  const checkCount = runEntries.reduce((total, item) => total + (item.run.verification?.checks?.length || 0), 0);
+  document.querySelector("#sandbox-run-count").textContent = `${checkCount} 次真实检查`;
+  document.querySelector("#sandbox-run-list").innerHTML = runEntries.length ? runEntries.slice(0, 30).map(({ task, run }) => {
+    const verification = run.verification || { checks: [], passed: true, skipped: true };
+    const repairs = run.repairAttempts?.length || 0;
+    const status = verification.skipped ? "无需执行" : verification.passed ? "通过" : "失败";
+    const details = verification.checks.length ? verification.checks.map((check) => `<li><span class="sandbox-check-state ${check.status === "passed" ? "passed" : "failed"}">${check.status === "passed" ? "✓" : "!"}</span><div><strong>${escapeHtml(check.label)}</strong><small>${escapeHtml(check.command || "受控检查")} · ${Math.max(0, check.durationMs || 0)} ms</small>${check.stderr ? `<pre>${escapeHtml(check.stderr.slice(-1800))}</pre>` : ""}</div></li>`).join("") : '<li class="sandbox-check-empty">该阶段仅交付文档或分析结果</li>';
+    return `<article class="sandbox-run-card"><header><div><span>${escapeHtml(task.title)}</span><strong>${escapeHtml(run.delegateTo)} · ${escapeHtml(run.title)}</strong></div><b class="sandbox-result ${verification.passed ? "passed" : "failed"}">${status}</b></header><div class="sandbox-run-meta"><span>${repairs} 轮修复</span><span>${run.artifacts?.length || 0} 个文件</span><span>${escapeHtml(run.model || "默认模型")}</span></div><ol>${details}</ol></article>`;
+  }).join("") : '<p class="empty-state">Agent 生成项目后，真实检查、错误和修复记录会显示在这里</p>';
+}
+
+function applySandboxPolicy(policy) {
+  sandboxPolicy = policy;
+  if (!policy) return;
+  document.querySelector("#sandbox-mode").textContent = policy.enabled ? "受控运行" : "未启用";
+  document.querySelector("#sandbox-shell").textContent = policy.shell ? "已启用" : "已禁用";
+  document.querySelector("#sandbox-timeout").textContent = `${Math.round(policy.timeoutMs / 1000)} 秒`;
+  document.querySelector("#sandbox-repairs").textContent = `最多 ${policy.repairAttempts} 轮`;
+  document.querySelector("#sandbox-boundary").textContent = policy.workspaceBoundary;
+  document.querySelector("#sandbox-commands").textContent = policy.allowedCommands.join("、");
+  document.querySelector("#sandbox-output-limit").textContent = `${Math.round(policy.maxOutputBytes / 1024)} KB`;
+}
+
+async function refreshSandboxPolicy() {
+  const state = document.querySelector("#sandbox-action-state");
+  try {
+    if (!window.desktop?.getSandboxStatus) throw new Error("请使用 Electron 桌面版");
+    applySandboxPolicy(await window.desktop.getSandboxStatus());
+    state.textContent = "执行沙箱在线，系统 Shell 已禁用。";
+    state.className = "success";
+  } catch (error) {
+    state.textContent = `沙箱状态读取失败：${error.message}`;
+    state.className = "error";
+  }
+}
+
 function render() {
   const todo = tasks.filter((task) => task.status === "todo").length;
   const progress = tasks.filter((task) => task.status === "progress").length;
@@ -136,7 +201,7 @@ function render() {
   const completion = tasks.length ? Math.round((done / tasks.length) * 100) : 0;
   document.querySelector("#project-progress").value = completion;
   document.querySelector("#project-progress-label").textContent = `${completion}%`;
-  renderOffice(); renderOrchestrator(); renderMemory(); renderDeploymentHistory(); renderExternalResources(); renderAudit();
+  renderOffice(); renderOrchestrator(); renderSandbox(); renderMemory(); renderDeploymentHistory(); renderExternalResources(); renderAudit();
 }
 
 function buildAuditRecords() {
@@ -328,6 +393,86 @@ function getTeamContext() {
 }
 function setModelFeedback(message, type = "") { const feedback = document.querySelector("#model-save-feedback"); feedback.textContent = message; feedback.className = `model-save-feedback ${type}`.trim(); }
 
+function setModelPoolFeedback(message, type = "") {
+  const feedback = document.querySelector("#model-pool-feedback");
+  feedback.textContent = message;
+  feedback.className = `model-pool-feedback ${type}`.trim();
+}
+
+function renderPlugins() {
+  const list = document.querySelector("#plugin-list");
+  if (!list) return;
+  const enabled = pluginState.filter((plugin) => plugin.enabled).length;
+  document.querySelector("#plugin-summary").textContent = `${enabled} 个插件启用`;
+  list.innerHTML = pluginState.length ? pluginState.map((plugin) => `<article class="plugin-item"><div class="plugin-mark">${escapeHtml(plugin.category.slice(0, 1))}</div><div class="plugin-copy"><header><strong>${escapeHtml(plugin.name)}</strong><span>${escapeHtml(plugin.version)} · ${plugin.source === "built-in" ? "内置" : "本地"}</span></header><p>${escapeHtml(plugin.description || "未填写说明")}</p><small>${escapeHtml(plugin.skills.join("、"))}</small></div><label class="plugin-switch"><input type="checkbox" data-plugin-id="${escapeHtml(plugin.id)}" ${plugin.enabled ? "checked" : ""} /><span>${plugin.enabled ? "已启用" : "已停用"}</span></label></article>`).join("") : '<p class="empty-state">没有可用插件</p>';
+}
+
+async function loadPlugins() {
+  try { pluginState = await window.desktop?.getPlugins?.() || []; renderPlugins(); }
+  catch (error) { document.querySelector("#plugin-state").textContent = `插件加载失败：${error.message}`; }
+}
+
+function renderModelPool() {
+  const profiles = modelPoolState.profiles || [];
+  const assignments = modelPoolState.assignments || {};
+  const assignedCount = Object.values(assignments).filter((profileId) => profiles.some((profile) => profile.id === profileId)).length;
+  const commander = profiles.find((profile) => profile.id === assignments.commander);
+  document.querySelector("#model-profile-count").textContent = profiles.length;
+  document.querySelector("#model-profile-badge").textContent = profiles.length;
+  document.querySelector("#model-assignment-count").textContent = assignedCount;
+  document.querySelector("#commander-model-label").textContent = commander?.model || "跟随主模型";
+  document.querySelector("#model-routing-state").textContent = assignedCount ? `${assignedCount} 个角色独立路由` : "主模型回退已启用";
+  document.querySelector("#model-profile-list").innerHTML = profiles.length ? profiles.map((profile) => `
+    <article class="model-profile-item" data-profile-id="${escapeHtml(profile.id)}">
+      <div class="model-profile-mark">${escapeHtml(profile.name.slice(0, 1).toUpperCase())}</div>
+      <div class="model-profile-copy"><strong>${escapeHtml(profile.name)}</strong><span>${escapeHtml(profile.model)}</span><small>${escapeHtml(profile.provider)} · ${escapeHtml(profile.baseUrl)}</small></div>
+      <span class="profile-secure-state">已加密</span>
+      <div class="model-profile-actions">
+        <button class="icon-button" type="button" data-profile-test="${escapeHtml(profile.id)}" title="测试连接" aria-label="测试 ${escapeHtml(profile.name)}">↻</button>
+        <button class="icon-button" type="button" data-profile-edit="${escapeHtml(profile.id)}" title="编辑连接" aria-label="编辑 ${escapeHtml(profile.name)}">✎</button>
+        <button class="icon-button danger" type="button" data-profile-delete="${escapeHtml(profile.id)}" title="删除连接" aria-label="删除 ${escapeHtml(profile.name)}">×</button>
+      </div>
+    </article>`).join("") : '<p class="empty-state">尚未添加独立模型连接</p>';
+  const options = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)} · ${escapeHtml(profile.model)}</option>`).join("");
+  document.querySelector("#model-routing-list").innerHTML = modelPoolTargets.map(([target, code, name, specialty]) => `
+    <label class="model-routing-row">
+      <b>${escapeHtml(code)}</b>
+      <span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(specialty)}</small></span>
+      <select data-model-target="${escapeHtml(target)}" aria-label="为 ${escapeHtml(name)} 选择模型">
+        <option value="">跟随主模型</option>${options}
+      </select>
+    </label>`).join("");
+  document.querySelectorAll("[data-model-target]").forEach((select) => { select.value = assignments[select.dataset.modelTarget] || ""; });
+}
+
+async function loadModelPool() {
+  if (!window.desktop?.getModelPool) { renderModelPool(); setModelPoolFeedback("模型池仅在 Electron 桌面版中可用", "error"); return; }
+  try { modelPoolState = await window.desktop.getModelPool(); renderModelPool(); }
+  catch (error) { setModelPoolFeedback(`读取模型池失败：${error.message}`, "error"); }
+}
+
+function applyPoolProviderDefaults() {
+  const form = document.querySelector("#model-profile-form");
+  const defaults = { openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com", google: "https://generativelanguage.googleapis.com", deepseek: "https://api.deepseek.com/v1", custom: "" };
+  form.baseUrl.value = defaults[form.provider.value];
+}
+
+function openModelProfileDialog(profile = null) {
+  const dialog = document.querySelector("#model-profile-dialog");
+  const form = document.querySelector("#model-profile-form");
+  form.reset();
+  form.id.value = profile?.id || "";
+  form.name.value = profile?.name || "";
+  form.provider.value = profile?.provider || "openai";
+  form.model.value = profile?.model || "";
+  if (profile) form.baseUrl.value = profile.baseUrl;
+  else applyPoolProviderDefaults();
+  form.apiKey.placeholder = profile?.apiKeyConfigured ? "已安全保存，留空则继续使用" : "输入密钥";
+  document.querySelector("#pool-api-key-hint").textContent = profile?.apiKeyConfigured ? "密钥已加密保存；输入新密钥可替换" : "密钥由 Windows 系统加密后保存在本机";
+  document.querySelector("#model-profile-dialog-title").textContent = profile ? "编辑模型连接" : "添加模型连接";
+  dialog.showModal();
+}
+
 async function executeNextTask(taskId) {
   const task = taskId ? tasks.find((item) => item.id === taskId) : tasks.find((item) => item.status === "todo");
   if (!task) { eventLog.unshift("没有可执行的待处理任务"); render(); return; }
@@ -335,13 +480,15 @@ async function executeNextTask(taskId) {
   const button = document.querySelector("#run-queue-button"); button.disabled = true; button.textContent = "Agent 执行中";
   tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "progress", running: true, startedAt: Date.now() } : item); eventLog.unshift(`灵灵正在分析“${task.title}”`); saveTasks(); render();
   try {
-    const response = await window.desktop.executeAgentTask({ task, skills: skillMap(), context: getTeamContext() });
+    const response = await window.desktop.executeAgentTask({ task, skills: skillMap(), context: getTeamContext(), autoGit: executionSettings.autoGit !== false });
     const files = response.runs.flatMap((run) => run.artifacts || []);
-    tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "done", running: false, agent: response.delegateTo, plan: response.plan, runs: response.runs, artifacts: files, result: response.result, completedAt: response.completedAt } : item);
-    eventLog.unshift(`${response.runs.length} 个子 Agent 步骤已完成“${task.title}”，生成 ${files.length} 个文件`);
-    const teamReport = response.runs.map((run, index) => `${index + 1}. ${run.delegateTo} · ${run.title}\n${run.summary}`).join("\n\n");
+    const passed = response.verification?.passed !== false;
+    tasks = tasks.map((item) => item.id === task.id ? { ...item, status: passed ? "done" : "todo", running: false, error: passed ? null : "自动验证未通过", agent: response.delegateTo, plan: response.plan, runs: response.runs, artifacts: files, result: response.result, verification: response.verification, git: response.git, pluginsUsed: response.pluginsUsed, sandbox: response.sandbox, taskRoot: response.taskRoot, completedAt: response.completedAt } : item);
+    eventLog.unshift(passed ? `${response.runs.length} 个子 Agent 步骤已完成“${task.title}”，${response.verification.checkCount} 项检查通过` : `“${task.title}”自动修复后仍有检查失败，已退回待处理`);
+    const teamReport = response.runs.map((run, index) => `${index + 1}. ${run.delegateTo} · ${run.title}${run.model ? ` · ${run.model}` : ""}\n${run.summary}`).join("\n\n");
     const artifactReport = files.length ? files.map((file) => `- ${file.relativePath}`).join("\n") : "- 本次仅交付文本结果";
-    chatMessages.push({ role: "assistant", content: `## ${task.title} · 团队已完成\n\n${teamReport}\n\n### 生成文件\n${artifactReport}\n\n### 主 Agent 验收\n${response.result}` });
+    const verificationReport = `检查 ${response.verification?.checkCount || 0} 项，自动修复 ${response.verification?.repairCount || 0} 轮，结果：${passed ? "通过" : "未通过"}${response.git?.revision ? `，Git ${response.git.revision}` : ""}`;
+    chatMessages.push({ role: "assistant", content: `## ${task.title} · ${passed ? "团队已完成" : "需要继续处理"}\n\n${teamReport}\n\n### 生成文件\n${artifactReport}\n\n### 真实执行\n${verificationReport}\n\n### 主 Agent 验收\n${response.result}` });
     renderChat();
   } catch (error) {
     tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "todo", running: false, error: error.message } : item); eventLog.unshift(`执行失败：${error.message}`);
@@ -397,9 +544,76 @@ async function applyChatAction(index) {
   if (action.type === "create_and_execute") await executeNextTask(task.id);
 }
 
-function activateView(name) { document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name)); document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === name)); }
+function selectedSandboxTask() {
+  const taskId = document.querySelector("#sandbox-task-select").value;
+  return tasks.find((task) => task.id === taskId) || null;
+}
+
+function createDemoTask(type) {
+  const demo = demoCatalog[type];
+  if (!demo) return;
+  const task = { id: crypto.randomUUID(), title: demo.title, description: demo.description, agent: demo.agent, priority: "high", status: "todo", createdAt: new Date().toISOString(), demoType: type };
+  tasks.unshift(task);
+  saveTasks();
+  eventLog.unshift(`已创建可运行案例“${demo.title}”`);
+  render();
+  activateView("orchestrator");
+}
+
+async function refreshSelectedGitStatus() {
+  const task = selectedSandboxTask();
+  const state = document.querySelector("#sandbox-action-state");
+  if (!task) { state.textContent = "当前没有可操作的任务工程。"; state.className = ""; return; }
+  try {
+    const result = await window.desktop.getTaskGitStatus(task.id);
+    state.textContent = result.initialized ? `Git ${result.revision || "已初始化"} · ${result.clean ? "工作区干净" : `${result.changes.length} 项变更`}` : "该任务尚未创建 Git 版本。";
+    state.className = result.initialized && result.clean ? "success" : "";
+  } catch (error) { state.textContent = `Git 状态读取失败：${error.message}`; state.className = "error"; }
+}
+
+async function verifySelectedTask() {
+  const task = selectedSandboxTask();
+  const state = document.querySelector("#sandbox-action-state");
+  if (!task) { state.textContent = "请先选择任务工程。"; return; }
+  const button = document.querySelector("#verify-task-button");
+  button.disabled = true; button.textContent = "验证中";
+  try {
+    const verification = await window.desktop.verifyTaskProject(task.id);
+    tasks = tasks.map((item) => item.id === task.id ? { ...item, manualVerification: verification } : item);
+    saveTasks(); renderSandbox();
+    state.textContent = verification.passed ? `${verification.checks.length} 项检查全部通过。` : `${verification.checks.filter((check) => check.status !== "passed").length} 项检查未通过。`;
+    state.className = verification.passed ? "success" : "error";
+  } catch (error) { state.textContent = `验证失败：${error.message}`; state.className = "error"; }
+  finally { button.disabled = false; button.textContent = "重新验证"; }
+}
+
+async function snapshotSelectedTask() {
+  const task = selectedSandboxTask();
+  const state = document.querySelector("#sandbox-action-state");
+  if (!task) { state.textContent = "请先选择任务工程。"; return; }
+  const button = document.querySelector("#snapshot-task-button");
+  button.disabled = true; button.textContent = "提交中";
+  try {
+    const git = await window.desktop.createTaskGitSnapshot(task.id, `AI Team：${task.title}`);
+    tasks = tasks.map((item) => item.id === task.id ? { ...item, git } : item);
+    saveTasks(); renderSandbox();
+    state.textContent = git.ok ? (git.committed ? `Git 版本 ${git.revision} 已创建。` : git.message) : `Git 失败：${git.error}`;
+    state.className = git.ok ? "success" : "error";
+  } catch (error) { state.textContent = `Git 失败：${error.message}`; state.className = "error"; }
+  finally { button.disabled = false; button.textContent = "创建 Git 版本"; }
+}
+
+function activateView(name) { document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name)); document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === name)); if (name === "sandbox") refreshSandboxPolicy(); }
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => activateView(button.dataset.view)));
 document.querySelectorAll("[data-open-view]").forEach((button) => button.addEventListener("click", () => activateView(button.dataset.openView)));
+
+document.querySelector(".demo-list").addEventListener("click", (event) => { const button = event.target.closest("[data-demo]"); if (button) createDemoTask(button.dataset.demo); });
+document.querySelector("#auto-git-toggle").addEventListener("change", (event) => { executionSettings.autoGit = event.target.checked; saveExecutionSettings(); });
+document.querySelector("#refresh-sandbox-button").addEventListener("click", async () => { await refreshSandboxPolicy(); await refreshSelectedGitStatus(); });
+document.querySelector("#sandbox-task-select").addEventListener("change", refreshSelectedGitStatus);
+document.querySelector("#verify-task-button").addEventListener("click", verifySelectedTask);
+document.querySelector("#snapshot-task-button").addEventListener("click", snapshotSelectedTask);
+document.querySelector("#open-task-project-button").addEventListener("click", async () => { const task = selectedSandboxTask(); const state = document.querySelector("#sandbox-action-state"); if (!task) { state.textContent = "请先选择任务工程。"; return; } try { const result = await window.desktop.openTaskProject(task.id); state.textContent = `已打开：${result.path}`; state.className = "success"; } catch (error) { state.textContent = `打开失败：${error.message}`; state.className = "error"; } });
 
 const taskDialog = document.querySelector("#task-dialog");
 document.querySelector("#new-task-button").addEventListener("click", () => taskDialog.showModal());
@@ -502,7 +716,56 @@ document.querySelector("#document-form").addEventListener("submit", async (event
 document.querySelector("#external-resources").addEventListener("click", (event) => { const id = event.target.dataset.deleteResource; if (!id) return; externalResources = externalResources.filter((resource) => resource.id !== id); saveExternalResources(); renderExternalResources(); });
 document.querySelector("#clear-resources-button").addEventListener("click", () => { if (!externalResources.length || confirm("确定清空所有外部资源吗？")) { externalResources = []; saveExternalResources(); renderExternalResources(); } });
 
+document.querySelector("#new-model-profile-button").addEventListener("click", () => openModelProfileDialog());
+document.querySelectorAll("[data-close-model-profile]").forEach((button) => button.addEventListener("click", () => document.querySelector("#model-profile-dialog").close()));
+document.querySelector("#pool-provider-select").addEventListener("change", applyPoolProviderDefaults);
+document.querySelector("#model-profile-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = document.querySelector("#save-model-profile-button");
+  const data = new FormData(event.currentTarget);
+  button.disabled = true; button.textContent = "保存中";
+  try {
+    modelPoolState = await window.desktop.saveModelProfile({ id: data.get("id") || undefined, name: data.get("name").trim(), provider: data.get("provider"), baseUrl: data.get("baseUrl").trim(), model: data.get("model").trim(), apiKey: data.get("apiKey").trim() });
+    renderModelPool();
+    document.querySelector("#model-profile-dialog").close();
+    setModelPoolFeedback("模型连接已由 Windows 加密保存并加入路由池", "success");
+  } catch (error) { setModelPoolFeedback(`保存失败：${error.message}`, "error"); }
+  finally { button.disabled = false; button.textContent = "保存连接"; }
+});
+document.querySelector("#model-profile-list").addEventListener("click", async (event) => {
+  const editId = event.target.dataset.profileEdit;
+  const testId = event.target.dataset.profileTest;
+  const deleteId = event.target.dataset.profileDelete;
+  if (editId) { openModelProfileDialog(modelPoolState.profiles.find((profile) => profile.id === editId)); return; }
+  if (testId) {
+    const button = event.target; button.disabled = true; button.classList.add("testing");
+    try { const result = await window.desktop.testModelProfile(testId); setModelPoolFeedback(`${result.profileName} 连接成功：${result.message}`, "success"); }
+    catch (error) { setModelPoolFeedback(`连接测试失败：${error.message}`, "error"); }
+    finally { button.disabled = false; button.classList.remove("testing"); }
+    return;
+  }
+  if (deleteId && confirm("确定删除这个模型连接吗？相关智能体将自动回退到主模型。")) {
+    try { modelPoolState = await window.desktop.deleteModelProfile(deleteId); renderModelPool(); setModelPoolFeedback("模型连接已删除，相关路由已回退", "success"); }
+    catch (error) { setModelPoolFeedback(`删除失败：${error.message}`, "error"); }
+  }
+});
+document.querySelector("#model-routing-list").addEventListener("change", async (event) => {
+  const target = event.target.dataset.modelTarget;
+  if (!target) return;
+  event.target.disabled = true;
+  try {
+    modelPoolState = await window.desktop.assignModelProfile(target, event.target.value || null);
+    renderModelPool();
+    const selected = modelPoolState.profiles.find((profile) => profile.id === modelPoolState.assignments[target]);
+    setModelPoolFeedback(`${target === "commander" ? "主 Agent" : target} 已${selected ? `绑定 ${selected.name}` : "回退到主模型"}`, "success");
+    const runtime = await window.desktop.getModelStatus();
+    setRuntimeState(runtime.configured, runtime.configured ? `${runtime.model} 已连接` : "模型待配置");
+  } catch (error) { setModelPoolFeedback(`路由保存失败：${error.message}`, "error"); renderModelPool(); }
+});
+
 document.querySelector("#skills-grid").addEventListener("change", (event) => { const skill = event.target.dataset.skill; if (!skill) return; event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills(); });
+document.querySelector("#plugin-list").addEventListener("change", async (event) => { const pluginId = event.target.dataset.pluginId; if (!pluginId) return; const state = document.querySelector("#plugin-state"); event.target.disabled = true; try { pluginState = await window.desktop.setPluginEnabled(pluginId, event.target.checked); renderPlugins(); state.textContent = "插件状态已保存，下一次 Agent 调度立即生效。"; state.className = "plugin-note success"; } catch (error) { state.textContent = `插件保存失败：${error.message}`; state.className = "plugin-note error"; await loadPlugins(); } });
+document.querySelector("#open-plugin-directory-button").addEventListener("click", async () => { const state = document.querySelector("#plugin-state"); try { const result = await window.desktop.openPluginDirectory(); state.textContent = `插件目录：${result.path}`; state.className = "plugin-note success"; } catch (error) { state.textContent = `无法打开插件目录：${error.message}`; state.className = "plugin-note error"; } });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
 document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const button = document.querySelector("#save-model-button"); const config = getModelFormConfig(); button.disabled = true; button.textContent = "保存中"; setModelFeedback("正在调用 Windows 系统加密服务…"); try { const result = await configureRuntime(config); localStorage.removeItem("ai-software-team.model-settings"); event.currentTarget.apiKey.value = ""; applyModelSettings(result); setModelFeedback("保存成功，关闭并重新打开软件后仍可使用", "success"); eventLog.unshift(`灵灵已保存并连接 ${config.model}`); render(); } catch (error) { const status = await window.desktop?.getModelStatus?.().catch(() => null); if (status) setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"); setModelFeedback(`保存失败：${error.message}`, "error"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } finally { button.disabled = false; button.textContent = "保存连接配置"; } });
 document.querySelector("#test-api-button").addEventListener("click", async () => { const button = document.querySelector("#test-api-button"); button.disabled = true; button.textContent = "测试中"; setModelFeedback("正在保存当前配置并测试模型响应…"); try { const config = getModelFormConfig(); const configured = await configureRuntime(config); document.querySelector("#model-settings-form").apiKey.value = ""; applyModelSettings(configured); const result = await window.desktop.testModel(); setRuntimeState(true, `${configured.model} 已连接`); setModelFeedback(`连接测试成功：${result.message}`, "success"); eventLog.unshift(`连接测试成功：${result.message}`); } catch (error) { setModelFeedback(`连接测试失败：${error.message}`, "error"); eventLog.unshift(`连接测试失败：${error.message}`); } finally { button.disabled = false; button.textContent = "测试连接"; renderOrchestrator(); } });
@@ -528,6 +791,6 @@ let managerLine = 0;
 setInterval(() => { managerLine = (managerLine + 1) % managerLines.length; document.querySelector("#manager-speech").textContent = managerLines[managerLine]; }, 9000);
 setInterval(() => renderOffice(), 3000);
 
-loadModelSettings(); renderSkills(); renderChat(); render();
+loadModelSettings(); loadModelPool(); loadPlugins(); renderSkills(); renderChat(); render(); refreshSandboxPolicy();
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));
