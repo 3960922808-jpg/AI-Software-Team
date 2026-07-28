@@ -18,11 +18,13 @@ function responseFor(system) {
 }
 
 async function main() {
+  const requestedModels = [];
   const server = http.createServer((request, response) => {
     let body = "";
     request.on("data", (chunk) => { body += chunk; });
     request.on("end", () => {
       const payload = JSON.parse(body);
+      requestedModels.push(payload.model);
       const system = payload.messages?.[0]?.content || "";
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ choices: [{ message: { content: responseFor(system) } }] }));
@@ -32,17 +34,22 @@ async function main() {
   const tempWorkspace = fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-v08-"));
   try {
     runtime.configure({ provider: "custom", baseUrl: `http://127.0.0.1:${server.address().port}/v1`, model: "mock-team", apiKey: "test-only" });
+    runtime.configurePool({ profiles: [{ id: "backend-model", name: "后端专用模型", provider: "custom", baseUrl: `http://127.0.0.1:${server.address().port}/v1`, model: "mock-backend", apiKey: "test-only" }], assignments: { "后端 Agent": "backend-model" } });
     runtime.setWorkspace(tempWorkspace);
     const result = await runtime.executeTask({ task: { id: "task-test", title: "实现并测试模块", priority: "high", agent: "技术主管 Agent" }, skills: { "后端 Agent": ["API 设计"], "测试 Agent": ["自动化测试"] }, context: [] });
     assert.equal(result.runs.length, 2);
     assert.equal(result.runs[0].delegateTo, "后端 Agent");
     assert.equal(result.runs[1].dependsOn[0], 0);
+    assert.equal(result.runs[0].model, "mock-backend");
+    assert.equal(result.runs[1].model, "mock-team");
     assert.equal(result.runs.flatMap((run) => run.artifacts).length, 2);
     for (const artifact of result.runs.flatMap((run) => run.artifacts)) assert.ok(fs.existsSync(artifact.absolutePath));
     assert.match(result.result, /验收结果/);
     const chat = await runtime.chat({ messages: [{ role: "user", content: "帮我实现并执行" }] });
     assert.equal(chat.action.type, "create_and_execute");
-    console.log("通过：主智能体拆解、两个子智能体执行、两个产物、最终验收与对话动作");
+    assert.ok(requestedModels.includes("mock-backend"));
+    assert.ok(requestedModels.includes("mock-team"));
+    console.log("通过：主智能体拆解、子智能体独立模型路由、产物、最终验收与对话动作");
   } finally {
     server.close();
     fs.rmSync(tempWorkspace, { recursive: true, force: true });

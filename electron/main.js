@@ -5,8 +5,10 @@ const modelRuntime = require("./model-runtime");
 const deliveryRuntime = require("./delivery-runtime");
 const integrationRuntime = require("./integration-runtime");
 const { createModelSettingsStore } = require("./model-settings-store");
+const { createModelPoolStore } = require("./model-pool-store");
 
 let modelSettingsStore = null;
+let modelPoolStore = null;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
 
@@ -34,6 +36,7 @@ async function createSplashWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     backgroundColor: "#f2f2f6",
+    icon: path.join(__dirname, "..", "assets", "brand", "app-icon.png"),
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
   await splashWindow.loadFile(path.join(__dirname, "..", "splash.html"));
@@ -42,16 +45,24 @@ async function createSplashWindow() {
 }
 
 function initializeModelSettings() {
-  modelSettingsStore = createModelSettingsStore({
-    filePath: path.join(app.getPath("userData"), "model-settings.json"),
+  const encryption = {
     encrypt: (value) => {
       if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows 系统加密服务当前不可用，无法安全保存 API Key");
       return safeStorage.encryptString(value).toString("base64");
     },
     decrypt: (value) => safeStorage.decryptString(Buffer.from(value, "base64")),
+  };
+  modelSettingsStore = createModelSettingsStore({
+    filePath: path.join(app.getPath("userData"), "model-settings.json"),
+    ...encryption,
+  });
+  modelPoolStore = createModelPoolStore({
+    filePath: path.join(app.getPath("userData"), "model-pool.json"),
+    ...encryption,
   });
   const saved = modelSettingsStore.load();
   if (saved) modelRuntime.configure(saved);
+  modelRuntime.configurePool(modelPoolStore.load());
 }
 
 const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
@@ -62,6 +73,7 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
     minHeight: 680,
     show: false,
     backgroundColor: "#ffffff",
+    icon: path.join(__dirname, "..", "assets", "brand", "app-icon.png"),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -159,10 +171,30 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("model:clear", () => {
       modelRuntime.clear();
       modelSettingsStore?.clear();
-      return { configured: false, persisted: false, apiKeyConfigured: false };
+      return { persisted: false, apiKeyConfigured: false, ...modelRuntime.status() };
     });
-    ipcMain.handle("model:status", () => modelSettingsStore?.status() || modelRuntime.status());
+    ipcMain.handle("model:status", () => ({ ...(modelSettingsStore?.status() || {}), ...modelRuntime.status() }));
     ipcMain.handle("model:test", () => modelRuntime.testConnection());
+    ipcMain.handle("model-pool:get", () => modelPoolStore?.status() || { profiles: [], assignments: {} });
+    ipcMain.handle("model-pool:save-profile", (_event, profile) => {
+      if (!modelPoolStore) initializeModelSettings();
+      modelPoolStore.saveProfile(profile);
+      modelRuntime.configurePool(modelPoolStore.load());
+      return modelPoolStore.status();
+    });
+    ipcMain.handle("model-pool:delete-profile", (_event, profileId) => {
+      if (!modelPoolStore) initializeModelSettings();
+      modelPoolStore.deleteProfile(profileId);
+      modelRuntime.configurePool(modelPoolStore.load());
+      return modelPoolStore.status();
+    });
+    ipcMain.handle("model-pool:assign", (_event, target, profileId) => {
+      if (!modelPoolStore) initializeModelSettings();
+      modelPoolStore.assign(target, profileId);
+      modelRuntime.configurePool(modelPoolStore.load());
+      return modelPoolStore.status();
+    });
+    ipcMain.handle("model-pool:test-profile", (_event, profileId) => modelRuntime.testProfile(profileId));
     ipcMain.handle("audit:export", async (_event, payload) => {
       const content = `${JSON.stringify(payload, null, 2)}\n`;
       if (Buffer.byteLength(content, "utf8") > 5 * 1024 * 1024) throw new Error("审计报告超过 5MB 限制");

@@ -90,6 +90,12 @@ let chatMessages = [];
 let workspacePath = null;
 let deliveryReport = null;
 let lastReleasePath = null;
+let modelPoolState = { profiles: [], assignments: {} };
+
+const modelPoolTargets = [
+  ["commander", "CO", "主 Agent", "任务拆解、路由与最终审查"],
+  ...roleAgents.map(([code, role, specialty]) => [role, code, role, specialty]),
+];
 
 function saveTasks() { localStorage.setItem(storageKeys.tasks, JSON.stringify(tasks)); }
 function saveAgents() { localStorage.setItem(storageKeys.agents, JSON.stringify(officeAgents)); }
@@ -328,6 +334,73 @@ function getTeamContext() {
 }
 function setModelFeedback(message, type = "") { const feedback = document.querySelector("#model-save-feedback"); feedback.textContent = message; feedback.className = `model-save-feedback ${type}`.trim(); }
 
+function setModelPoolFeedback(message, type = "") {
+  const feedback = document.querySelector("#model-pool-feedback");
+  feedback.textContent = message;
+  feedback.className = `model-pool-feedback ${type}`.trim();
+}
+
+function renderModelPool() {
+  const profiles = modelPoolState.profiles || [];
+  const assignments = modelPoolState.assignments || {};
+  const assignedCount = Object.values(assignments).filter((profileId) => profiles.some((profile) => profile.id === profileId)).length;
+  const commander = profiles.find((profile) => profile.id === assignments.commander);
+  document.querySelector("#model-profile-count").textContent = profiles.length;
+  document.querySelector("#model-profile-badge").textContent = profiles.length;
+  document.querySelector("#model-assignment-count").textContent = assignedCount;
+  document.querySelector("#commander-model-label").textContent = commander?.model || "跟随主模型";
+  document.querySelector("#model-routing-state").textContent = assignedCount ? `${assignedCount} 个角色独立路由` : "主模型回退已启用";
+  document.querySelector("#model-profile-list").innerHTML = profiles.length ? profiles.map((profile) => `
+    <article class="model-profile-item" data-profile-id="${escapeHtml(profile.id)}">
+      <div class="model-profile-mark">${escapeHtml(profile.name.slice(0, 1).toUpperCase())}</div>
+      <div class="model-profile-copy"><strong>${escapeHtml(profile.name)}</strong><span>${escapeHtml(profile.model)}</span><small>${escapeHtml(profile.provider)} · ${escapeHtml(profile.baseUrl)}</small></div>
+      <span class="profile-secure-state">已加密</span>
+      <div class="model-profile-actions">
+        <button class="icon-button" type="button" data-profile-test="${escapeHtml(profile.id)}" title="测试连接" aria-label="测试 ${escapeHtml(profile.name)}">↻</button>
+        <button class="icon-button" type="button" data-profile-edit="${escapeHtml(profile.id)}" title="编辑连接" aria-label="编辑 ${escapeHtml(profile.name)}">✎</button>
+        <button class="icon-button danger" type="button" data-profile-delete="${escapeHtml(profile.id)}" title="删除连接" aria-label="删除 ${escapeHtml(profile.name)}">×</button>
+      </div>
+    </article>`).join("") : '<p class="empty-state">尚未添加独立模型连接</p>';
+  const options = profiles.map((profile) => `<option value="${escapeHtml(profile.id)}">${escapeHtml(profile.name)} · ${escapeHtml(profile.model)}</option>`).join("");
+  document.querySelector("#model-routing-list").innerHTML = modelPoolTargets.map(([target, code, name, specialty]) => `
+    <label class="model-routing-row">
+      <b>${escapeHtml(code)}</b>
+      <span><strong>${escapeHtml(name)}</strong><small>${escapeHtml(specialty)}</small></span>
+      <select data-model-target="${escapeHtml(target)}" aria-label="为 ${escapeHtml(name)} 选择模型">
+        <option value="">跟随主模型</option>${options}
+      </select>
+    </label>`).join("");
+  document.querySelectorAll("[data-model-target]").forEach((select) => { select.value = assignments[select.dataset.modelTarget] || ""; });
+}
+
+async function loadModelPool() {
+  if (!window.desktop?.getModelPool) { renderModelPool(); setModelPoolFeedback("模型池仅在 Electron 桌面版中可用", "error"); return; }
+  try { modelPoolState = await window.desktop.getModelPool(); renderModelPool(); }
+  catch (error) { setModelPoolFeedback(`读取模型池失败：${error.message}`, "error"); }
+}
+
+function applyPoolProviderDefaults() {
+  const form = document.querySelector("#model-profile-form");
+  const defaults = { openai: "https://api.openai.com/v1", anthropic: "https://api.anthropic.com", google: "https://generativelanguage.googleapis.com", deepseek: "https://api.deepseek.com/v1", custom: "" };
+  form.baseUrl.value = defaults[form.provider.value];
+}
+
+function openModelProfileDialog(profile = null) {
+  const dialog = document.querySelector("#model-profile-dialog");
+  const form = document.querySelector("#model-profile-form");
+  form.reset();
+  form.id.value = profile?.id || "";
+  form.name.value = profile?.name || "";
+  form.provider.value = profile?.provider || "openai";
+  form.model.value = profile?.model || "";
+  if (profile) form.baseUrl.value = profile.baseUrl;
+  else applyPoolProviderDefaults();
+  form.apiKey.placeholder = profile?.apiKeyConfigured ? "已安全保存，留空则继续使用" : "输入密钥";
+  document.querySelector("#pool-api-key-hint").textContent = profile?.apiKeyConfigured ? "密钥已加密保存；输入新密钥可替换" : "密钥由 Windows 系统加密后保存在本机";
+  document.querySelector("#model-profile-dialog-title").textContent = profile ? "编辑模型连接" : "添加模型连接";
+  dialog.showModal();
+}
+
 async function executeNextTask(taskId) {
   const task = taskId ? tasks.find((item) => item.id === taskId) : tasks.find((item) => item.status === "todo");
   if (!task) { eventLog.unshift("没有可执行的待处理任务"); render(); return; }
@@ -339,7 +412,7 @@ async function executeNextTask(taskId) {
     const files = response.runs.flatMap((run) => run.artifacts || []);
     tasks = tasks.map((item) => item.id === task.id ? { ...item, status: "done", running: false, agent: response.delegateTo, plan: response.plan, runs: response.runs, artifacts: files, result: response.result, completedAt: response.completedAt } : item);
     eventLog.unshift(`${response.runs.length} 个子 Agent 步骤已完成“${task.title}”，生成 ${files.length} 个文件`);
-    const teamReport = response.runs.map((run, index) => `${index + 1}. ${run.delegateTo} · ${run.title}\n${run.summary}`).join("\n\n");
+    const teamReport = response.runs.map((run, index) => `${index + 1}. ${run.delegateTo} · ${run.title}${run.model ? ` · ${run.model}` : ""}\n${run.summary}`).join("\n\n");
     const artifactReport = files.length ? files.map((file) => `- ${file.relativePath}`).join("\n") : "- 本次仅交付文本结果";
     chatMessages.push({ role: "assistant", content: `## ${task.title} · 团队已完成\n\n${teamReport}\n\n### 生成文件\n${artifactReport}\n\n### 主 Agent 验收\n${response.result}` });
     renderChat();
@@ -502,6 +575,53 @@ document.querySelector("#document-form").addEventListener("submit", async (event
 document.querySelector("#external-resources").addEventListener("click", (event) => { const id = event.target.dataset.deleteResource; if (!id) return; externalResources = externalResources.filter((resource) => resource.id !== id); saveExternalResources(); renderExternalResources(); });
 document.querySelector("#clear-resources-button").addEventListener("click", () => { if (!externalResources.length || confirm("确定清空所有外部资源吗？")) { externalResources = []; saveExternalResources(); renderExternalResources(); } });
 
+document.querySelector("#new-model-profile-button").addEventListener("click", () => openModelProfileDialog());
+document.querySelectorAll("[data-close-model-profile]").forEach((button) => button.addEventListener("click", () => document.querySelector("#model-profile-dialog").close()));
+document.querySelector("#pool-provider-select").addEventListener("change", applyPoolProviderDefaults);
+document.querySelector("#model-profile-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = document.querySelector("#save-model-profile-button");
+  const data = new FormData(event.currentTarget);
+  button.disabled = true; button.textContent = "保存中";
+  try {
+    modelPoolState = await window.desktop.saveModelProfile({ id: data.get("id") || undefined, name: data.get("name").trim(), provider: data.get("provider"), baseUrl: data.get("baseUrl").trim(), model: data.get("model").trim(), apiKey: data.get("apiKey").trim() });
+    renderModelPool();
+    document.querySelector("#model-profile-dialog").close();
+    setModelPoolFeedback("模型连接已由 Windows 加密保存并加入路由池", "success");
+  } catch (error) { setModelPoolFeedback(`保存失败：${error.message}`, "error"); }
+  finally { button.disabled = false; button.textContent = "保存连接"; }
+});
+document.querySelector("#model-profile-list").addEventListener("click", async (event) => {
+  const editId = event.target.dataset.profileEdit;
+  const testId = event.target.dataset.profileTest;
+  const deleteId = event.target.dataset.profileDelete;
+  if (editId) { openModelProfileDialog(modelPoolState.profiles.find((profile) => profile.id === editId)); return; }
+  if (testId) {
+    const button = event.target; button.disabled = true; button.classList.add("testing");
+    try { const result = await window.desktop.testModelProfile(testId); setModelPoolFeedback(`${result.profileName} 连接成功：${result.message}`, "success"); }
+    catch (error) { setModelPoolFeedback(`连接测试失败：${error.message}`, "error"); }
+    finally { button.disabled = false; button.classList.remove("testing"); }
+    return;
+  }
+  if (deleteId && confirm("确定删除这个模型连接吗？相关智能体将自动回退到主模型。")) {
+    try { modelPoolState = await window.desktop.deleteModelProfile(deleteId); renderModelPool(); setModelPoolFeedback("模型连接已删除，相关路由已回退", "success"); }
+    catch (error) { setModelPoolFeedback(`删除失败：${error.message}`, "error"); }
+  }
+});
+document.querySelector("#model-routing-list").addEventListener("change", async (event) => {
+  const target = event.target.dataset.modelTarget;
+  if (!target) return;
+  event.target.disabled = true;
+  try {
+    modelPoolState = await window.desktop.assignModelProfile(target, event.target.value || null);
+    renderModelPool();
+    const selected = modelPoolState.profiles.find((profile) => profile.id === modelPoolState.assignments[target]);
+    setModelPoolFeedback(`${target === "commander" ? "主 Agent" : target} 已${selected ? `绑定 ${selected.name}` : "回退到主模型"}`, "success");
+    const runtime = await window.desktop.getModelStatus();
+    setRuntimeState(runtime.configured, runtime.configured ? `${runtime.model} 已连接` : "模型待配置");
+  } catch (error) { setModelPoolFeedback(`路由保存失败：${error.message}`, "error"); renderModelPool(); }
+});
+
 document.querySelector("#skills-grid").addEventListener("change", (event) => { const skill = event.target.dataset.skill; if (!skill) return; event.target.checked ? enabledSkills.add(skill) : enabledSkills.delete(skill); renderSkills(); });
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
 document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const button = document.querySelector("#save-model-button"); const config = getModelFormConfig(); button.disabled = true; button.textContent = "保存中"; setModelFeedback("正在调用 Windows 系统加密服务…"); try { const result = await configureRuntime(config); localStorage.removeItem("ai-software-team.model-settings"); event.currentTarget.apiKey.value = ""; applyModelSettings(result); setModelFeedback("保存成功，关闭并重新打开软件后仍可使用", "success"); eventLog.unshift(`灵灵已保存并连接 ${config.model}`); render(); } catch (error) { const status = await window.desktop?.getModelStatus?.().catch(() => null); if (status) setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"); setModelFeedback(`保存失败：${error.message}`, "error"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } finally { button.disabled = false; button.textContent = "保存连接配置"; } });
@@ -528,6 +648,6 @@ let managerLine = 0;
 setInterval(() => { managerLine = (managerLine + 1) % managerLines.length; document.querySelector("#manager-speech").textContent = managerLines[managerLine]; }, 9000);
 setInterval(() => renderOffice(), 3000);
 
-loadModelSettings(); renderSkills(); renderChat(); render();
+loadModelSettings(); loadModelPool(); renderSkills(); renderChat(); render();
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));
