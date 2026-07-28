@@ -116,7 +116,28 @@ function createPluginRuntime({ directoryPath, statePath }) {
     return load().filter((plugin) => plugin.enabled).map(({ id, name, version, agents, skills, prompt }) => ({ id, name, version, agents, skills, prompt }));
   }
 
-  return { status, setEnabled, context, directoryPath: path.resolve(directoryPath) };
+  function importManifest(sourcePath) {
+    const resolved = path.resolve(String(sourcePath || ""));
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) throw new Error("所选 Skill 文件不存在");
+    if (path.extname(resolved).toLowerCase() !== ".json") throw new Error("Skill 文件必须使用 JSON 格式");
+    if (fs.statSync(resolved).size > MAX_MANIFEST_BYTES) throw new Error("Skill 文件不能超过 64KB");
+    const plugin = normalizeManifest(readJson(resolved, null), "local", resolved);
+    if (builtInPlugins.some((item) => item.id === plugin.id)) throw new Error("Skill ID 与内置插件冲突");
+    const targetPath = path.join(directoryPath, `${plugin.id}.json`);
+    writeJson(targetPath, {
+      id: plugin.id,
+      name: plugin.name,
+      version: plugin.version,
+      category: plugin.category,
+      description: plugin.description,
+      agents: plugin.agents,
+      skills: plugin.skills,
+      prompt: plugin.prompt,
+    });
+    return { plugin: status().find((item) => item.id === plugin.id), plugins: status() };
+  }
+
+  return { status, setEnabled, context, importManifest, directoryPath: path.resolve(directoryPath) };
 }
 
 module.exports = { createPluginRuntime, normalizeManifest, builtInPlugins };

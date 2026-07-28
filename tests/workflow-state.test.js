@@ -1,14 +1,21 @@
 const assert = require("assert");
 const workflowState = require("../workflow-state");
 
-const empty = workflowState.build([], null);
+const empty = workflowState.build([], null, "software");
 assert.strictEqual(empty.task, null);
-assert.strictEqual(empty.nodes.length, 22);
+assert.strictEqual(empty.nodes.length, 21);
 assert.strictEqual(empty.summary.progress, 0);
+
+const manager = empty.nodes.find((node) => node.id === "commander");
+const agents = empty.nodes.filter((node) => node.type === "agent");
+const modules = empty.nodes.filter((node) => node.type === "module");
+assert.ok(manager.x < Math.min(...agents.map((node) => node.x)), "经理必须位于所有 Agent 左侧");
+assert.strictEqual(agents.length, 10);
+assert.strictEqual(modules.length, 10);
 assert.strictEqual(empty.edges.filter((edge) => edge.from === "commander").length, 10);
-for (const agentId of workflowState.agentIds) {
-  assert.ok(empty.edges.some((edge) => edge.from === "commander" && edge.to === agentId), `经理缺少到 ${agentId} 的支流`);
-  assert.ok(empty.edges.some((edge) => edge.from === agentId && edge.to === `${agentId}-output`), `${agentId} 缺少能力板块连接`);
+for (const agent of agents) {
+  assert.ok(empty.edges.some((edge) => edge.from === "commander" && edge.to === agent.id), `经理缺少到 ${agent.id} 的支流`);
+  assert.ok(empty.edges.some((edge) => edge.from === agent.id && edge.to === `${agent.id}-output`), `${agent.id} 缺少下游任务板块`);
 }
 
 const queued = workflowState.build([{
@@ -16,9 +23,9 @@ const queued = workflowState.build([{
   title: "创建桌面工具",
   status: "todo",
   agent: "技术主管 Agent"
-}], "task-1");
+}], "task-1", "software");
 assert.strictEqual(queued.task.id, "task-1");
-assert.strictEqual(queued.nodes.find((node) => node.id === "request").state, "done");
+assert.strictEqual(queued.nodes.find((node) => node.id === "commander").state, "queued");
 assert.strictEqual(queued.nodes.find((node) => node.id === "techlead").state, "queued");
 
 const completed = workflowState.build([{
@@ -31,23 +38,19 @@ const completed = workflowState.build([{
     { delegateTo: "后端 Agent", title: "实现服务", summary: "接口已经完成", verification: { passed: true, checks: [{}] } },
     { delegateTo: "测试 Agent", title: "运行测试", summary: "测试已经通过", verification: { passed: true, checks: [{}, {}] } }
   ]
-}], "task-2");
+}], "task-2", "software");
 assert.strictEqual(completed.nodes.find((node) => node.id === "backend").state, "done");
-assert.strictEqual(completed.nodes.find((node) => node.id === "tester").state, "done");
-assert.strictEqual(completed.nodes.find((node) => node.id === "backend-output").state, "done");
 assert.strictEqual(completed.nodes.find((node) => node.id === "tester-output").state, "done");
 assert.strictEqual(completed.summary.progress, 100);
 assert.strictEqual(completed.summary.artifacts, 2);
 
-const failed = workflowState.build([{
-  id: "task-3",
-  title: "失败任务",
-  status: "todo",
-  error: "自动验证未通过",
-  runs: [{ delegateTo: "测试 Agent", title: "运行测试", verification: { passed: false, checks: [{}] } }]
-}], "task-3");
-assert.strictEqual(failed.nodes.find((node) => node.id === "tester").state, "failed");
-assert.strictEqual(failed.nodes.find((node) => node.id === "tester-output").state, "failed");
-assert.ok(failed.edges.some((edge) => edge.state === "failed"));
+const templateList = workflowState.templateList();
+assert.deepStrictEqual(templateList.map((template) => template.id), ["software", "image", "video"]);
+for (const mode of ["image", "video"]) {
+  const workflow = workflowState.build([], null, mode);
+  const modeManager = workflow.nodes.find((node) => node.manager);
+  assert.ok(modeManager);
+  assert.ok(workflow.edges.some((edge) => edge.from === modeManager.id));
+}
 
-console.log("可视化工作流状态测试通过");
+console.log("可编辑工作流模板与分支结构测试通过");

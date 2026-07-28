@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   chat: (payload) => ipcRenderer.invoke("agent:chat", payload),
   getPlugins: () => ipcRenderer.invoke("plugins:get"),
   setPluginEnabled: (pluginId, enabled) => ipcRenderer.invoke("plugins:set-enabled", pluginId, enabled),
+  importPlugin: () => ipcRenderer.invoke("plugins:import"),
   openPluginDirectory: () => ipcRenderer.invoke("plugins:open-directory"),
   getSandboxStatus: () => ipcRenderer.invoke("sandbox:status"),
   verifyTaskProject: (taskId) => ipcRenderer.invoke("sandbox:verify", taskId),

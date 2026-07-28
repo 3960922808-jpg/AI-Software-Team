@@ -565,6 +565,82 @@ body.mode-switching { overflow:hidden; }
 @media (max-width:800px) { .interface-mode-switch { width:260px; margin:12px auto 0; }.workflow-toolbar { align-items:stretch; justify-content:stretch; }.workflow-task-picker { width:100%; }.workflow-task-picker select { max-width:none; }.workflow-summary { grid-template-columns:1fr 1fr; }.workflow-summary > div { border-bottom:1px solid #e1e1e1; }.workflow-summary > div:nth-child(2) { border-right:0; }.workflow-layout { min-height:auto; }.workflow-viewport { min-height:560px; }.workflow-legend { flex-wrap:wrap; }.workflow-legend b { width:100%; margin:0; }.workflow-capabilities ul { grid-template-columns:1fr; } }
 @media (prefers-reduced-motion:reduce) { .workflow-link.active,.workflow-node.active,.transition-ring,.mode-transition-visual img { animation:none !important; } }
 
+/* 可编辑工作流 */
+.workflow-template-nav { display:none; margin:18px 12px 0; padding-top:16px; border-top:1px solid rgba(255,255,255,.14); }
+body[data-interface-mode="workflow"] .workflow-template-nav { display:grid; gap:7px; }
+body[data-interface-mode="workflow"] .sidebar nav { display:none; }
+.workflow-template-nav > p { margin:0 6px 4px; color:#aaa; font-size:9px; }
+.workflow-template-nav button { display:grid; grid-template-columns:28px minmax(0,1fr); gap:2px 9px; align-items:center; width:100%; padding:10px; border:1px solid transparent; border-radius:7px; background:transparent; color:#ddd; text-align:left; cursor:pointer; }
+.workflow-template-nav button:hover,.workflow-template-nav button.active { border-color:rgba(255,255,255,.24); background:rgba(255,255,255,.1); color:#fff; }
+.workflow-template-nav button span { grid-row:1 / 3; display:grid; place-items:center; width:28px; height:28px; border:1px solid rgba(255,255,255,.25); border-radius:6px; font-size:9px; }
+.workflow-template-nav button b { font-size:11px; }
+.workflow-template-nav button small { overflow:hidden; color:#aaa; font-size:8px; text-overflow:ellipsis; white-space:nowrap; }
+.workflow-template-nav button.active small { color:#ddd; }
+
+.workflow-toolbar > button { min-height:37px; }
+.workflow-toolbar .secondary-button.active { border-color:#111; background:#111; color:#fff; }
+.workflow-layers { display:flex; grid-template-columns:none; align-items:center; justify-content:space-between; min-height:40px; padding:0 14px; }
+.workflow-layers span { padding:0; border:0; color:#111; font-size:10px; font-weight:700; }
+.workflow-layers b { color:#777; font-size:9px; font-weight:400; }
+.workflow-layout { grid-template-columns:minmax(0,1fr) 340px; min-height:calc(100vh - 190px); }
+.workflow-canvas-panel { min-height:720px; }
+.workflow-viewport { min-height:720px; }
+.workflow-canvas { width:1500px; height:1120px; transition:transform .18s ease; }
+.workflow-canvas.connecting .workflow-node { cursor:crosshair; }
+.workflow-node { touch-action:none; user-select:none; }
+.workflow-node.dragging { z-index:20; cursor:grabbing; transition:none; box-shadow:0 15px 34px rgba(0,0,0,.16); }
+.workflow-node-copy em { display:block; width:100%; height:3px; margin-top:8px; overflow:hidden; border-radius:3px; background:#e9e9e9; }
+.workflow-node-copy em i { display:block; height:100%; border:0; border-radius:3px; background:#111; box-shadow:none; transition:width .2s ease; }
+.workflow-link.custom { stroke:#555; stroke-dasharray:5 5; }
+.workflow-inspector { display:grid; grid-template-rows:minmax(260px,1fr) 330px; max-height:calc(100vh - 210px); overflow:hidden; padding:0 0 0 16px; }
+.workflow-inspector-scroll { min-height:0; overflow:auto; padding-right:4px; }
+.workflow-inspector-scroll > header { position:relative; padding:4px 0 16px; border-bottom:1px solid #ddd; }
+.workflow-inspector-scroll h2 { margin:0; padding-right:82px; font-size:17px; }
+.workflow-inspector-scroll header > span { position:absolute; right:0; bottom:15px; padding:4px 7px; border:1px solid #d4d4d4; border-radius:4px; background:#f6f6f6; color:#555; font-size:9px; }
+.workflow-inspector-scroll > p { margin:15px 0; color:#555; font-size:11px; line-height:1.65; }
+.workflow-inspector-scroll > section { padding:13px 0; border-top:1px solid #e3e3e3; }
+.workflow-inspector-scroll > section h3 { display:flex; justify-content:space-between; margin:0 0 10px; font-size:10px; }
+.workflow-inspector-scroll select { width:100%; min-height:34px; padding:6px 8px; }
+.workflow-progress-editor input { width:100%; accent-color:#111; }
+.workflow-edge-list { display:grid; gap:6px; }
+.workflow-edge-list > div { display:grid; grid-template-columns:minmax(0,1fr) 25px; gap:5px; align-items:center; color:#555; font-size:9px; }
+.workflow-edge-list button { width:25px; height:25px; padding:0; border:1px solid #ddd; border-radius:5px; background:#fff; cursor:pointer; }
+.workflow-ai-chat { position:relative; display:grid; grid-template-rows:auto minmax(0,1fr) auto; min-height:0; margin-top:10px; padding-top:12px; border-top:1px solid #ccc; background:#fff; }
+.workflow-ai-chat > header { display:flex; align-items:center; justify-content:space-between; padding-bottom:8px; }
+.workflow-ai-chat h3 { margin:2px 0 0; font-size:11px; }
+.workflow-chat-messages { min-height:0; overflow:auto; padding:5px 3px 8px 0; }
+.workflow-chat-messages article { width:fit-content; max-width:92%; margin:7px 0; padding:8px 10px; border:1px solid #dedede; border-radius:7px; background:#f7f7f7; color:#222; font-size:10px; line-height:1.55; }
+.workflow-chat-messages article.user { margin-left:auto; border-color:#111; background:#111; color:#fff; }
+.workflow-chat-messages article.pending { color:#777; }
+.workflow-chat-messages small { display:block; margin-bottom:3px; color:#777; font-size:8px; }
+.workflow-chat-messages article.user small { color:#ccc; }
+.workflow-ai-chat form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; padding-top:7px; border-top:1px solid #e5e5e5; }
+.workflow-ai-chat textarea { min-height:58px; max-height:92px; resize:none; }
+.workflow-ai-chat form button { align-self:end; min-height:36px; }
+.workflow-chat-candidates { position:absolute; right:0; bottom:71px; left:0; z-index:15; max-height:200px; overflow:auto; padding:5px; border:1px solid #ccc; border-radius:7px; background:rgba(255,255,255,.96); box-shadow:0 12px 30px rgba(0,0,0,.13); backdrop-filter:blur(18px); }
+.workflow-chat-candidates[hidden] { display:none; }
+.workflow-chat-candidates button { display:flex; align-items:center; justify-content:space-between; width:100%; padding:8px; border:0; border-radius:5px; background:transparent; color:#111; text-align:left; cursor:pointer; }
+.workflow-chat-candidates button:hover { background:#eee; }
+.workflow-chat-candidates b { font-size:10px; }
+.workflow-chat-candidates small { color:#777; font-size:8px; }
+.workflow-context-menu { position:fixed; z-index:100; width:190px; padding:6px; border:1px solid rgba(0,0,0,.18); border-radius:7px; background:rgba(255,255,255,.94); box-shadow:0 16px 45px rgba(0,0,0,.16); backdrop-filter:blur(20px); }
+.workflow-context-menu[hidden] { display:none; }
+.workflow-context-menu button { width:100%; padding:9px 10px; border:0; border-radius:5px; background:transparent; color:#222; text-align:left; cursor:pointer; }
+.workflow-context-menu button:hover { background:#eee; }
+.workflow-context-menu button.danger { color:#9b3535; }
+.workflow-node-dialog form { width:min(520px,calc(100vw - 40px)); }
+
+@media (max-width:1250px) {
+  .workflow-layout { grid-template-columns:minmax(0,1fr) 310px; }
+  .workflow-toolbar { justify-content:flex-start; }
+}
+@media (max-width:980px) {
+  .workflow-layout { grid-template-columns:1fr; }
+  .workflow-inspector { grid-template-columns:1fr 1fr; grid-template-rows:520px; max-height:none; padding:16px 0 0; border-top:1px solid #ddd; border-left:0; }
+  .workflow-inspector-scroll { padding-right:15px; }
+  .workflow-ai-chat { margin:0; padding:0 0 0 15px; border-top:0; border-left:1px solid #ddd; }
+}
+
 /* 技能中心标准滑块，隔离全局输入框样式 */
 .skill-list .skill-toggle {
   appearance:none;

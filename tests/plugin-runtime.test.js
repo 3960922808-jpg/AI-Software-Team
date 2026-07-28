@@ -24,7 +24,19 @@ function main() {
     runtime.setEnabled("documentation-quality", true);
     assert.ok(runtime.context().some((plugin) => plugin.id === "documentation-quality" && plugin.prompt.includes("启动")));
     assert.ok(fs.existsSync(statePath));
-    console.log("通过：内置插件、本地清单校验、启用状态持久化与调度上下文");
+    const importPath = path.join(root, "custom-skill.json");
+    fs.writeFileSync(importPath, JSON.stringify({ id: "visual-delivery", name: "视觉交付", version: "1.0.0", category: "扩展", description: "检查视觉交付", agents: ["前端 Agent"], skills: ["视觉验收"], prompt: "检查界面一致性。" }), "utf8");
+    const imported = runtime.importManifest(importPath);
+    assert.equal(imported.plugin.id, "visual-delivery");
+    assert.ok(imported.plugins.some((plugin) => plugin.id === "visual-delivery"));
+    assert.throws(() => runtime.importManifest(path.join(root, "invalid.txt")), /不存在|JSON/);
+    const conflictPath = path.join(root, "conflict.json");
+    fs.writeFileSync(conflictPath, JSON.stringify({ id: "database-foundation", name: "冲突", version: "1.0.0", agents: [], skills: ["冲突技能"], prompt: "冲突" }), "utf8");
+    assert.throws(() => runtime.importManifest(conflictPath), /冲突/);
+    const largePath = path.join(root, "large.json");
+    fs.writeFileSync(largePath, JSON.stringify({ data: "x".repeat(70 * 1024) }), "utf8");
+    assert.throws(() => runtime.importManifest(largePath), /64KB/);
+    console.log("通过：插件状态、自定义 Skill 导入、大小限制与内置 ID 冲突保护");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 

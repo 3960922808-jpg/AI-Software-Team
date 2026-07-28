@@ -277,17 +277,30 @@ async function executeTask(payload) {
 }
 
 async function chat(payload) {
-  const history = (payload.messages || []).slice(-12).map((message) => `${message.role === "user" ? "用户" : "灵灵"}：${message.content}`).join("\n").slice(0, 24000);
+  const requestedTarget = String(payload.targetAgent || "commander");
+  const target = Object.hasOwn(agentRoles, requestedTarget) ? requestedTarget : "commander";
+  const assistantName = target === "commander" ? "灵灵" : target;
+  const history = (payload.messages || []).slice(-12).map((message) => `${message.role === "user" ? "用户" : assistantName}：${message.content}`).join("\n").slice(0, 24000);
   const context = (payload.context || []).slice(0, 10).join("\n").slice(0, 16000);
   const plugins = (Array.isArray(payload.plugins) ? payload.plugins : []).slice(0, 20).map((plugin) => `${plugin.name}：${plugin.skills.join("、")}`).join("；").slice(0, 6000);
+  const invokedSkills = (Array.isArray(payload.invokedSkills) ? payload.invokedSkills : []).slice(0, 12).map((skill) => String(skill).slice(0, 80)).join("、");
+  if (target !== "commander") {
+    const text = await callModel(
+      `${agentRoles[target]}你现在被用户通过 @ 单独调用，只处理当前交给你的工作，不代表其他 Agent 发言。回答必须专业、具体、可执行；若用户通过 / 指定技能，必须优先遵循这些技能。输出清晰的 Markdown，禁止虚构已运行的命令、测试或文件。`,
+      `团队上下文：\n${context || "暂无"}\n指定技能：${invokedSkills || "未指定"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}\n\n对话记录：\n${history}`,
+      target
+    );
+    const route = describeRoute(target);
+    return { content: text, action: null, target, model: route.model, profileName: route.profileName };
+  }
   const text = await callModel(
     "你是 AI 软件团队的项目经理灵灵。回答必须专业、具体、可执行。你可以回答、分析，也可以建议创建任务。只输出 JSON：{\"reply\":\"Markdown 回答\",\"action\":null}；需要行动时 action 为 {\"type\":\"create_task\"或\"create_and_execute\",\"title\":\"任务名\",\"description\":\"清晰交付要求\",\"priority\":\"high|medium|low\",\"agent\":\"建议 Agent\"}。未经用户明确要求不要自动执行。",
-    `团队上下文：\n${context || "暂无"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}\n\n对话记录：\n${history}`
+    `团队上下文：\n${context || "暂无"}\n指定技能：${invokedSkills || "未指定"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}\n\n对话记录：\n${history}`
   );
   const parsed = parseJson(text, null);
   const route = describeRoute("commander");
-  if (!parsed) return { content: text, action: null, model: route.model, profileName: route.profileName };
-  return { content: String(parsed.reply || text), action: parsed.action && typeof parsed.action === "object" ? parsed.action : null, model: route.model, profileName: route.profileName };
+  if (!parsed) return { content: text, action: null, target: "commander", model: route.model, profileName: route.profileName };
+  return { content: String(parsed.reply || text), action: parsed.action && typeof parsed.action === "object" ? parsed.action : null, target: "commander", model: route.model, profileName: route.profileName };
 }
 
 module.exports = { configure, clear, configurePool, clearPool, poolStatus, status, setWorkspace, getWorkspace, testConnection, testProfile, executeTask, chat };

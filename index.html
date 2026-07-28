@@ -16,6 +16,12 @@
           <button class="active" type="button" data-interface-mode="studio"><span>▦</span>工作室</button>
           <button type="button" data-interface-mode="workflow"><span>⌘</span>工作流</button>
         </div>
+        <section class="workflow-template-nav" id="workflow-template-nav" aria-label="工作流模板">
+          <p>工作流模式</p>
+          <button class="active" type="button" data-workflow-mode="software"><span>01</span><b>软件研发</b><small>经理调度 10 个 Agent</small></button>
+          <button type="button" data-workflow-mode="image"><span>02</span><b>生图流程</b><small>提示词、生成与成图验收</small></button>
+          <button type="button" data-workflow-mode="video"><span>03</span><b>视频流程</b><small>脚本、分镜、剪辑与验收</small></button>
+        </section>
         <nav aria-label="主导航">
           <button class="nav-item active" type="button" data-view="projects"><span>▦</span>Agent 工作室</button>
           <button class="nav-item" type="button" data-view="orchestrator"><span>◎</span>Agent 编排</button>
@@ -58,6 +64,9 @@
             <div><p class="eyebrow">VISUAL WORKFLOW</p><h1>可视化工作流</h1></div>
             <div class="workflow-toolbar">
               <label class="workflow-task-picker">当前任务<select id="workflow-task-select"><option value="">等待创建任务</option></select></label>
+              <button class="secondary-button" id="workflow-add-node" type="button">＋ 添加节点</button>
+              <button class="secondary-button" id="workflow-connect" type="button">⌁ 自定义连线</button>
+              <button class="secondary-button" id="workflow-models" type="button">◉ 配置模型</button>
               <div class="workflow-zoom" role="group" aria-label="画布缩放">
                 <button class="icon-button" id="workflow-zoom-out" type="button" title="缩小" aria-label="缩小">−</button>
                 <span id="workflow-scale-label">100%</span>
@@ -75,23 +84,39 @@
           </section>
           <section class="workflow-layout">
             <section class="workflow-canvas-panel">
-              <header class="workflow-layers" aria-hidden="true"><span>专业能力板块</span><span>10 个 Agent ← 项目经理 → 10 个 Agent</span><span>研发交付板块</span></header>
+              <header class="workflow-layers"><span id="workflow-template-label">软件研发</span><b id="workflow-canvas-hint">拖动节点调整布局 · 右键编辑 · 可自定义连线</b></header>
               <div class="workflow-viewport" id="workflow-viewport">
                 <div class="workflow-canvas" id="workflow-canvas">
-                  <svg id="workflow-links" width="1510" height="860" viewBox="0 0 1510 860" aria-hidden="true"></svg>
+                  <svg id="workflow-links" width="1500" height="1120" viewBox="0 0 1500 1120" aria-hidden="true"></svg>
                   <div id="workflow-nodes"></div>
                 </div>
               </div>
               <footer class="workflow-legend"><span><i class="done"></i>已完成</span><span><i class="active"></i>执行中</span><span><i class="queued"></i>等待</span><span><i class="failed"></i>阻断</span><b>节点和连线来自当前任务的真实执行记录</b></footer>
             </section>
             <aside class="workflow-inspector">
-              <header><p class="eyebrow">节点检查器</p><h2 id="workflow-inspector-title">选择流程节点</h2><span id="workflow-inspector-state">等待选择</span></header>
-              <p id="workflow-inspector-detail">点击画布中的节点，查看职责、已装载技能、执行结果和产物。</p>
-              <section><h3>已装载技能</h3><div class="workflow-skill-list" id="workflow-skill-list"><span>暂无</span></div></section>
-              <section><h3>执行证据</h3><dl class="workflow-evidence" id="workflow-evidence"><div><dt>状态</dt><dd>等待任务</dd></div></dl></section>
-              <section class="workflow-capabilities"><h3>架构能力接入</h3><ul><li><span>模型池与角色路由</span><b>已接入</b></li><li><span>任务、项目与知识记忆</span><b>已接入</b></li><li><span>文件、终端与 Git 工具</span><b>已接入</b></li><li><span>自动测试与修复循环</span><b>已接入</b></li><li><span>安全审查与交付审计</span><b>已接入</b></li><li><span>技能插件与启停控制</span><b>已接入</b></li></ul></section>
+              <div class="workflow-inspector-scroll">
+                <header><p class="eyebrow">节点配置</p><h2 id="workflow-inspector-title">选择流程节点</h2><span id="workflow-inspector-state">等待选择</span></header>
+                <p id="workflow-inspector-detail">点击画布中的节点查看详情，拖动节点可自由编排。</p>
+                <section class="workflow-progress-editor"><h3>节点进度 <b id="workflow-node-progress-label">0%</b></h3><input id="workflow-node-progress" type="range" min="0" max="100" step="1" value="0" /></section>
+                <section><h3>执行模型</h3><select id="workflow-node-model"><option value="">跟随主模型</option></select></section>
+                <section><h3>已装载技能</h3><div class="workflow-skill-list" id="workflow-skill-list"><span>暂无</span></div></section>
+                <section><h3>执行证据</h3><dl class="workflow-evidence" id="workflow-evidence"><div><dt>状态</dt><dd>等待任务</dd></div></dl></section>
+                <section><h3>连线管理</h3><div class="workflow-edge-list" id="workflow-edge-list"><span>暂无自定义连线</span></div></section>
+              </div>
+              <section class="workflow-ai-chat">
+                <header><div><p class="eyebrow">AI 对话</p><h3 id="workflow-chat-target">灵灵 · 团队总控</h3></div><button class="icon-button" id="workflow-clear-chat" type="button" title="清空对话">×</button></header>
+                <div class="workflow-chat-messages" id="workflow-chat-messages"><article class="assistant">使用 @ 指定经理或 Agent，使用 / 调用 Skill。</article></div>
+                <div class="workflow-chat-candidates" id="workflow-chat-candidates" hidden></div>
+                <form id="workflow-chat-form"><textarea id="workflow-chat-input" maxlength="4000" placeholder="@前端 Agent /界面实现 完成登录页…" required></textarea><button class="primary-button" type="submit">发送</button></form>
+              </section>
             </aside>
           </section>
+          <div class="workflow-context-menu" id="workflow-context-menu" hidden>
+            <button type="button" data-workflow-action="edit">编辑节点</button>
+            <button type="button" data-workflow-action="progress">查看与修改进度</button>
+            <button type="button" data-workflow-action="connect">从此节点连线</button>
+            <button class="danger" type="button" data-workflow-action="delete">删除节点</button>
+          </div>
         </section>
         <section class="view" data-view-panel="orchestrator">
           <header class="topbar"><div><p class="eyebrow">Agent Orchestrator</p><h1>智能调度中心</h1></div><button class="primary-button" id="run-queue-button" type="button">AI 执行下一任务</button></header>
@@ -150,7 +175,7 @@
           <header class="topbar"><div><p class="eyebrow">Skill System</p><h1>Agent 技能中心</h1></div><span class="session-label" id="skills-summary">0 项技能已启用</span></header>
           <section class="skills-intro"><div><p class="eyebrow">专属能力</p><h2>为每个 Agent 配置可审计的工作技能</h2><p>技能决定 Agent 可以执行的操作范围。指挥 Agent 只负责任务分解和分派，专业 Agent 仅使用其被授权的专属 Skill。</p></div></section>
           <section class="skills-grid" id="skills-grid"></section>
-          <section class="plugin-section"><header class="section-heading"><div><p class="eyebrow">Manifest Plugins</p><h2>安全插件</h2></div><div class="header-actions"><span class="session-label" id="plugin-summary">0 个插件启用</span><button class="secondary-button" id="open-plugin-directory-button" type="button">打开插件目录</button></div></header><div class="plugin-list" id="plugin-list"><p class="empty-state">正在加载插件注册表</p></div><p class="plugin-note" id="plugin-state">插件只注入结构化技能与约束，不执行第三方脚本。</p></section>
+          <section class="plugin-section"><header class="section-heading"><div><p class="eyebrow">Manifest Plugins</p><h2>安全插件</h2></div><div class="header-actions"><span class="session-label" id="plugin-summary">0 个插件启用</span><button class="secondary-button" id="import-plugin-button" type="button">导入 Skill</button><button class="secondary-button" id="open-plugin-directory-button" type="button">打开插件目录</button></div></header><div class="plugin-list" id="plugin-list"><p class="empty-state">正在加载插件注册表</p></div><p class="plugin-note" id="plugin-state">插件只注入结构化技能与约束，不执行第三方脚本。</p></section>
         </section>
         <section class="view" data-view-panel="audit">
           <header class="topbar audit-topbar"><div><p class="eyebrow">运行审计</p><h1>运行与审计中心</h1></div><div class="header-actions"><button class="secondary-button" id="refresh-audit-button" type="button">刷新</button><button class="primary-button" id="export-audit-button" type="button">导出审计报告</button></div></header>
@@ -217,6 +242,19 @@
         <label>API Base URL<input name="baseUrl" type="url" required placeholder="https://api.openai.com/v1" /></label>
         <label>API Key<input name="apiKey" type="password" autocomplete="off" placeholder="输入密钥" /><small class="field-hint" id="pool-api-key-hint">密钥由 Windows 系统加密后保存在本机</small></label>
         <menu><button class="secondary-button" type="button" data-close-model-profile>取消</button><button class="primary-button" type="submit" id="save-model-profile-button">保存连接</button></menu>
+      </form>
+    </dialog>
+    <dialog id="workflow-node-dialog" class="workflow-node-dialog">
+      <form id="workflow-node-form">
+        <div class="dialog-heading"><div><p class="eyebrow">WORKFLOW NODE</p><h2 id="workflow-node-dialog-title">添加节点</h2></div><button class="icon-button" type="button" data-close-workflow-node aria-label="关闭">×</button></div>
+        <input name="id" type="hidden" />
+        <label>节点名称<input name="title" required maxlength="60" placeholder="例如：设计验收任务" /></label>
+        <label>节点说明<textarea name="subtitle" maxlength="180" placeholder="说明职责、输入和预期产物"></textarea></label>
+        <div class="form-row"><label>节点类型<select name="type"><option value="module">任务板块</option><option value="agent">Agent</option><option value="manager">经理</option></select></label><label>节点标识<input name="code" maxlength="6" placeholder="TASK" /></label></div>
+        <label>角色路由<select name="role"><option value="">无独立角色路由</option><option>产品经理 Agent</option><option>架构师 Agent</option><option>技术主管 Agent</option><option>安全专家 Agent</option><option>前端 Agent</option><option>后端 Agent</option><option>数据库 Agent</option><option>测试 Agent</option><option>代码审查 Agent</option><option>DevOps Agent</option></select></label>
+        <label>执行模型<select name="modelProfile"><option value="">跟随主模型</option></select></label>
+        <label>当前进度 <output id="workflow-dialog-progress-label">0%</output><input name="progress" type="range" min="0" max="100" step="1" value="0" /></label>
+        <menu><button class="secondary-button" type="button" data-close-workflow-node>取消</button><button class="primary-button" type="submit">保存节点</button></menu>
       </form>
     </dialog>
     <div class="mode-transition" id="mode-transition" hidden aria-live="polite" aria-busy="true">

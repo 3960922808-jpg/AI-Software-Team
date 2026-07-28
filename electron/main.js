@@ -267,6 +267,11 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [] }));
     ipcMain.handle("plugins:get", () => pluginRuntime?.status() || []);
     ipcMain.handle("plugins:set-enabled", (_event, pluginId, enabled) => pluginRuntime.setEnabled(pluginId, enabled));
+    ipcMain.handle("plugins:import", async () => {
+      const result = await dialog.showOpenDialog({ title: "导入自定义 Skill", properties: ["openFile"], filters: [{ name: "Skill JSON", extensions: ["json"] }] });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true, plugins: pluginRuntime.status() };
+      return { canceled: false, ...pluginRuntime.importManifest(result.filePaths[0]) };
+    });
     ipcMain.handle("plugins:open-directory", async () => {
       const error = await shell.openPath(pluginRuntime.directoryPath);
       if (error) throw new Error(error);
