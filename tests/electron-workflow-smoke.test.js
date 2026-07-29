@@ -101,6 +101,7 @@ async function main() {
         mediaConfigure: typeof window.desktop?.configureMediaModel === 'function',
         imageModelForm: Boolean(document.querySelector('#image-model-form')),
         videoModelForm: Boolean(document.querySelector('#video-model-form')),
+        languageControls: document.querySelectorAll('[data-language]').length,
         demoPanels: document.querySelectorAll('.demo-panel,[data-demo]').length,
         templateColor: getComputedStyle(document.querySelector('[data-workflow-mode="software"]')).color,
         templateBackground: getComputedStyle(document.querySelector('[data-workflow-mode="software"]')).backgroundColor
@@ -115,8 +116,42 @@ async function main() {
     assert.equal(initial.integrationTest, true);
     assert.ok(initial.mediaGet && initial.mediaConfigure);
     assert.ok(initial.imageModelForm && initial.videoModelForm);
+    assert.equal(initial.languageControls, 2);
     assert.equal(initial.demoPanels, 0);
     assert.notEqual(initial.templateColor, initial.templateBackground);
+
+    const originalRoleValue = await client.evaluate("document.querySelector('#task-form [name=\"agent\"] option').value");
+    await client.evaluate("window.AppI18n.setLanguage('en-US'); true");
+    await delay(180);
+    const englishLanguage = await client.evaluate(`(() => {
+      const ignored = new Set(['SCRIPT', 'STYLE']);
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const residual = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (ignored.has(node.parentElement?.tagName)) continue;
+        const value = node.nodeValue.trim();
+        if (value && /[\u4e00-\u9fff]/.test(value)) residual.push(value);
+      }
+      for (const element of document.querySelectorAll('*')) {
+        for (const attribute of ['placeholder', 'title', 'aria-label']) {
+          const value = element.getAttribute(attribute) || '';
+          if (/[\u4e00-\u9fff]/.test(value)) residual.push(value);
+        }
+      }
+      return {
+        lang: document.documentElement.lang,
+        title: document.title,
+        stored: localStorage.getItem('ai-software-team.language'),
+        roleValue: document.querySelector('#task-form [name="agent"] option').value,
+        residual: [...new Set(residual)].slice(0, 80)
+      };
+    })()`);
+    assert.equal(englishLanguage.lang, 'en-US');
+    assert.equal(englishLanguage.stored, 'en-US');
+    assert.match(englishLanguage.title, /Project Workspace/);
+    assert.equal(englishLanguage.roleValue, originalRoleValue);
+    assert.deepEqual(englishLanguage.residual, []);
 
     await client.evaluate(`(() => {
       activateView('settings');
@@ -131,7 +166,7 @@ async function main() {
     await delay(250);
     const mainSave = await client.evaluate(`(async () => ({ status: await window.desktop.getModelStatus(), feedback: document.querySelector('#model-save-feedback').textContent }))()`);
     assert.equal(mainSave.status.configured, true);
-    assert.match(mainSave.feedback, /保存成功/);
+    assert.match(mainSave.feedback, /saved|success/i);
 
     await client.evaluate(`(() => {
       const image = document.querySelector('#image-model-form');
@@ -152,8 +187,8 @@ async function main() {
     const mediaSaved = await client.evaluate(`(async () => ({ models: await window.desktop.getMediaModels(), imageFeedback: document.querySelector('#image-model-feedback').textContent, videoFeedback: document.querySelector('#video-model-feedback').textContent }))()`);
     assert.equal(mediaSaved.models.image.configured, true);
     assert.equal(mediaSaved.models.video.configured, true);
-    assert.match(mediaSaved.imageFeedback, /保存成功/);
-    assert.match(mediaSaved.videoFeedback, /保存成功/);
+    assert.match(mediaSaved.imageFeedback, /saved|success/i);
+    assert.match(mediaSaved.videoFeedback, /saved|success/i);
 
     await client.evaluate("document.querySelector('#image-model-form [data-clear-media-model]').click(); true");
     await delay(180);
@@ -164,6 +199,29 @@ async function main() {
     const selectedWorkspace = await client.evaluate(`(async () => { const result = await window.desktop.setWorkspace(${JSON.stringify(workspaceDirectory)}); setWorkspaceState(result.path); return { path: result.path, input: document.querySelector('#workspace-path').value }; })()`);
     assert.equal(selectedWorkspace.path, path.resolve(workspaceDirectory));
     assert.equal(selectedWorkspace.input, path.resolve(workspaceDirectory));
+    const dynamicResidual = await client.evaluate(`(() => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const values = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        if (['SCRIPT', 'STYLE'].includes(node.parentElement?.tagName)) continue;
+        const value = node.nodeValue.trim();
+        if (value && /[\u4e00-\u9fff]/.test(value)) values.push(value);
+      }
+      for (const element of document.querySelectorAll('*')) {
+        for (const attribute of ['placeholder', 'title', 'aria-label']) {
+          const value = element.getAttribute(attribute) || '';
+          if (/[\u4e00-\u9fff]/.test(value)) values.push(value);
+        }
+      }
+      return [...new Set(values)].slice(0, 80);
+    })()`);
+    assert.deepEqual(dynamicResidual, []);
+    await client.evaluate("window.AppI18n.setLanguage('zh-CN'); true");
+    await delay(120);
+    assert.match(await client.evaluate("document.title"), /项目工作台/);
+    await client.evaluate("applyInterfaceMode('workflow'); true");
+    await delay(120);
 
     const dialogLayout = await client.evaluate(`(() => {
       openWorkflowNodeDialog(currentWorkflow.nodes.find((node) => node.id === 'architect-output'));
@@ -212,12 +270,30 @@ async function main() {
     const imageMode = await client.evaluate("({ mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length })");
     assert.equal(imageMode.mode, "image");
     assert.ok(imageMode.manager && imageMode.edges > 0);
-    console.log("通过：Electron 独立媒体配置、用户任务、返回导航、模型路由、拖动、动画连线与右键定位");
+    await client.evaluate("window.AppI18n.setLanguage('en-US'); location.reload(); true");
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await delay(100);
+      try { if (await client.evaluate("document.readyState === 'complete' && window.AppI18n?.getLanguage() === 'en-US'")) break; } catch {}
+    }
+    const persistedLanguage = await client.evaluate("({ language: window.AppI18n.getLanguage(), lang: document.documentElement.lang, title: document.title })");
+    assert.equal(persistedLanguage.language, "en-US");
+    assert.equal(persistedLanguage.lang, "en-US");
+    assert.match(persistedLanguage.title, /Project Workspace/);
+    console.log("通过：Electron 独立媒体配置、双语切换、用户任务、返回导航、模型路由、拖动、动画连线与右键定位");
+  } catch (error) {
+    console.error(error);
+    process.exitCode = 1;
   } finally {
-    client?.close();
     const exited = new Promise((resolve) => child.once("exit", resolve));
-    child.kill();
-    await Promise.race([exited, delay(3000)]);
+    if (client) {
+      try { await client.send("Browser.close"); } catch {}
+      client.close();
+    }
+    await Promise.race([exited, delay(2000)]);
+    if (child.exitCode === null) {
+      child.kill();
+      await Promise.race([exited, delay(1000)]);
+    }
     if (userData) {
       for (let attempt = 0; attempt < 5; attempt += 1) {
         try { fs.rmSync(userData, { recursive: true, force: true }); break; }

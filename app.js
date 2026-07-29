@@ -59,6 +59,8 @@ const skillCatalog = [
   ["DO", "DevOps Agent", [["构建流水线", "配置可重复的构建与发布"], ["部署编排", "管理环境与版本交付"], ["运行监控", "建立日志、指标和告警"]]]
 ];
 function loadJson(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } }
+function uiText(value) { return window.AppI18n?.t(value) || value; }
+function uiLocale() { return window.AppI18n?.locale() || "zh-CN"; }
 let tasks = loadJson(storageKeys.tasks, []);
 if (!Array.isArray(tasks)) tasks = [];
 let officeAgents = loadJson(storageKeys.agents, defaultOfficeAgents);
@@ -683,7 +685,7 @@ function renderAudit() {
   document.querySelector("#audit-step-count").textContent = all.reduce((total, record) => total + record.stepCount, 0);
   document.querySelector("#audit-artifact-count").textContent = all.reduce((total, record) => total + record.artifactCount, 0);
   document.querySelector("#audit-result-count").textContent = `${filtered.length} 条记录`;
-  list.innerHTML = filtered.length ? filtered.map((record) => `<details class="audit-record"><summary><span class="audit-kind">${escapeHtml(record.kind)}</span><div><strong>${escapeHtml(record.title)}</strong><small>${escapeHtml(record.agent)} · ${record.timestamp ? new Date(record.timestamp).toLocaleString("zh-CN") : "尚未开始"}</small></div><span class="audit-record-meta">${record.stepCount} 步 · ${record.artifactCount} 个产物</span><b class="audit-status ${record.status === "成功" ? "success" : record.status === "失败" ? "failure" : "pending"}">${record.status}</b></summary><div class="audit-record-body"><p>${escapeHtml(record.summary)}</p>${record.steps.length ? `<ol>${record.steps.map((step) => `<li><strong>${escapeHtml(step.agent)} · ${escapeHtml(step.title)}</strong><p>${escapeHtml(step.summary || "未返回摘要")}</p><small>${step.artifacts.length ? `产物：${step.artifacts.map(escapeHtml).join("、")}` : "无文件产物"}</small></li>`).join("")}</ol>` : ""}${record.url ? `<a href="${escapeHtml(record.url)}" target="_blank" rel="noreferrer">${escapeHtml(record.url)}</a>` : ""}</div></details>`).join("") : '<p class="empty-state">没有符合筛选条件的运行记录</p>';
+  list.innerHTML = filtered.length ? filtered.map((record) => `<details class="audit-record"><summary><span class="audit-kind">${escapeHtml(record.kind)}</span><div><strong>${escapeHtml(record.title)}</strong><small>${escapeHtml(record.agent)} · ${record.timestamp ? new Date(record.timestamp).toLocaleString(uiLocale()) : "尚未开始"}</small></div><span class="audit-record-meta">${record.stepCount} 步 · ${record.artifactCount} 个产物</span><b class="audit-status ${record.status === "成功" ? "success" : record.status === "失败" ? "failure" : "pending"}">${record.status}</b></summary><div class="audit-record-body"><p>${escapeHtml(record.summary)}</p>${record.steps.length ? `<ol>${record.steps.map((step) => `<li><strong>${escapeHtml(step.agent)} · ${escapeHtml(step.title)}</strong><p>${escapeHtml(step.summary || "未返回摘要")}</p><small>${step.artifacts.length ? `产物：${step.artifacts.map(escapeHtml).join("、")}` : "无文件产物"}</small></li>`).join("")}</ol>` : ""}${record.url ? `<a href="${escapeHtml(record.url)}" target="_blank" rel="noreferrer">${escapeHtml(record.url)}</a>` : ""}</div></details>`).join("") : '<p class="empty-state">没有符合筛选条件的运行记录</p>';
 }
 
 function renderExternalResources() {
@@ -692,15 +694,15 @@ function renderExternalResources() {
   const characters = externalResources.reduce((total, resource) => total + JSON.stringify(resource.data || {}).length, 0);
   document.querySelector("#repository-resource-count").textContent = repositories.length;
   document.querySelector("#document-resource-count").textContent = documents.length;
-  document.querySelector("#resource-character-count").textContent = characters.toLocaleString("zh-CN");
-  document.querySelector("#resource-updated-at").textContent = externalResources.length ? `更新于 ${new Date(externalResources[0].createdAt).toLocaleString("zh-CN")}` : "暂无资源";
+  document.querySelector("#resource-character-count").textContent = characters.toLocaleString(uiLocale());
+  document.querySelector("#resource-updated-at").textContent = externalResources.length ? `更新于 ${new Date(externalResources[0].createdAt).toLocaleString(uiLocale())}` : "暂无资源";
   document.querySelector("#external-resources").innerHTML = externalResources.length ? externalResources.map((resource) => {
     if (resource.type === "repository") {
       const data = resource.data;
       return `<article class="external-resource"><header><span class="resource-type">代码仓库</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.name)}</h3><p>${escapeHtml(data.description || "未填写仓库说明")}</p><dl><div><dt>默认分支</dt><dd>${escapeHtml(data.defaultBranch)}</dd></div><div><dt>主要语言</dt><dd>${escapeHtml(data.language)}</dd></div><div><dt>文件路径</dt><dd>${data.files.length}</dd></div></dl><small>${data.truncated ? "文件列表已截断" : "文件列表完整"}</small></article>`;
     }
     const data = resource.data;
-    return `<article class="external-resource"><header><span class="resource-type">网页资料</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.title)}</h3><p>${escapeHtml(data.content.slice(0, 220))}${data.content.length > 220 ? "…" : ""}</p><a href="${escapeHtml(data.url)}" target="_blank" rel="noreferrer">${escapeHtml(data.url)}</a><small>${data.content.length.toLocaleString("zh-CN")} 个字符</small></article>`;
+    return `<article class="external-resource"><header><span class="resource-type">网页资料</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.title)}</h3><p>${escapeHtml(data.content.slice(0, 220))}${data.content.length > 220 ? "…" : ""}</p><a href="${escapeHtml(data.url)}" target="_blank" rel="noreferrer">${escapeHtml(data.url)}</a><small>${data.content.length.toLocaleString(uiLocale())} 个字符</small></article>`;
   }).join("") : '<p class="empty-state">连接代码仓库或读取公开资料后，资源会显示在这里</p>';
 }
 
@@ -720,8 +722,8 @@ function renderDeliveryReport(report) {
   const passed = report.checks.filter((check) => check.status === "pass").length;
   document.querySelector("#delivery-check-count").textContent = `${passed}/${report.checks.length}`;
   document.querySelector("#delivery-checks").innerHTML = report.checks.map((check) => `<article class="delivery-check ${check.status}"><span>${check.status === "pass" ? "✓" : "!"}</span><div><strong>${escapeHtml(check.label)}</strong><small>${escapeHtml(check.detail)}</small></div></article>`).join("");
-  document.querySelector("#delivery-scan-time").textContent = `检查于 ${new Date(report.scannedAt).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`;
-  document.querySelector("#delivery-artifacts").innerHTML = report.artifacts.length ? report.artifacts.map((file) => `<tr><td title="${escapeHtml(file.relativePath)}"><strong>${escapeHtml(file.name)}</strong><small>${escapeHtml(file.relativePath)}</small></td><td>${formatFileSize(file.size)}</td><td><code title="${file.sha256}">${file.sha256.slice(0, 12)}</code></td><td>${new Date(file.modifiedAt).toLocaleString("zh-CN")}</td></tr>`).join("") : '<tr><td colspan="4">暂无智能体文件产物</td></tr>';
+  document.querySelector("#delivery-scan-time").textContent = `检查于 ${new Date(report.scannedAt).toLocaleTimeString(uiLocale(), { hour: "2-digit", minute: "2-digit" })}`;
+  document.querySelector("#delivery-artifacts").innerHTML = report.artifacts.length ? report.artifacts.map((file) => `<tr><td title="${escapeHtml(file.relativePath)}"><strong>${escapeHtml(file.name)}</strong><small>${escapeHtml(file.relativePath)}</small></td><td>${formatFileSize(file.size)}</td><td><code title="${file.sha256}">${file.sha256.slice(0, 12)}</code></td><td>${new Date(file.modifiedAt).toLocaleString(uiLocale())}</td></tr>`).join("") : '<tr><td colspan="4">暂无智能体文件产物</td></tr>';
 }
 
 function clearDeliveryReport(message = "选择工作目录后开始检查") {
@@ -746,7 +748,7 @@ async function refreshDelivery() {
 
 function renderDeploymentHistory() {
   document.querySelector("#deployment-count").textContent = deploymentRecords.length;
-  document.querySelector("#deployment-history").innerHTML = deploymentRecords.length ? deploymentRecords.slice(0, 20).map((record) => `<article class="deployment-record"><span class="deployment-status ${record.status === "成功" ? "success" : "failure"}">${escapeHtml(record.status)}</span><div><strong>${escapeHtml(record.environment)} · ${escapeHtml(record.version || "未关联版本")}</strong><p>${escapeHtml(record.note || "未填写说明")}</p>${record.url ? `<a href="${escapeHtml(record.url)}" target="_blank" rel="noreferrer">${escapeHtml(record.url)}</a>` : ""}</div><time>${new Date(record.createdAt).toLocaleString("zh-CN")}</time></article>`).join("") : '<p class="empty-state">暂无部署记录</p>';
+  document.querySelector("#deployment-history").innerHTML = deploymentRecords.length ? deploymentRecords.slice(0, 20).map((record) => `<article class="deployment-record"><span class="deployment-status ${record.status === "成功" ? "success" : "failure"}">${escapeHtml(record.status)}</span><div><strong>${escapeHtml(record.environment)} · ${escapeHtml(record.version || "未关联版本")}</strong><p>${escapeHtml(record.note || "未填写说明")}</p>${record.url ? `<a href="${escapeHtml(record.url)}" target="_blank" rel="noreferrer">${escapeHtml(record.url)}</a>` : ""}</div><time>${new Date(record.createdAt).toLocaleString(uiLocale())}</time></article>`).join("") : '<p class="empty-state">暂无部署记录</p>';
 }
 
 function renderOrchestrator() {
@@ -1269,7 +1271,7 @@ document.querySelector("#workflow-context-menu").addEventListener("click", (even
   if (action === "edit") openWorkflowNodeDialog(node);
   if (action === "progress") document.querySelector("#workflow-node-progress").focus();
   if (action === "connect") startWorkflowConnection(node.id);
-  if (action === "delete" && confirm(`确定从当前工作流删除“${node.title}”吗？`)) deleteWorkflowNode(node.id);
+  if (action === "delete" && confirm(uiText(`确定从当前工作流删除“${node.title}”吗？`))) deleteWorkflowNode(node.id);
 });
 document.addEventListener("click", (event) => { if (!event.target.closest("#workflow-context-menu")) document.querySelector("#workflow-context-menu").hidden = true; });
 document.querySelector("#workflow-node-progress").addEventListener("input", (event) => { document.querySelector("#workflow-node-progress-label").textContent = `${event.target.value}%`; });
@@ -1313,7 +1315,7 @@ document.querySelector("#desk-grid").addEventListener("contextmenu", (event) => 
 document.querySelector("#manager-character").addEventListener("contextmenu", (event) => { event.preventDefault(); showAgentMenu("manager", event.clientX, event.clientY); });
 document.addEventListener("click", (event) => { if (!event.target.closest("#agent-context-menu")) hideAgentMenu(); });
 document.querySelector("#context-edit-agent").addEventListener("click", () => { const agent = officeAgents.find((item) => item.id === selectedAgentId); if (!agent) return; const form = document.querySelector("#agent-form"); form.querySelector('[name="id"]').value = agent.id; form.querySelector('[name="name"]').value = agent.name; form.querySelector('[name="role"]').value = agent.role; hideAgentMenu(); document.querySelector("#agent-dialog").showModal(); });
-document.querySelector("#context-delete-agent").addEventListener("click", () => { const agent = officeAgents.find((item) => item.id === selectedAgentId); if (!agent || !confirm(`确定删除 ${agent.name} 吗？`)) return; officeAgents = officeAgents.filter((item) => item.id !== selectedAgentId); saveAgents(); hideAgentMenu(); render(); });
+document.querySelector("#context-delete-agent").addEventListener("click", () => { const agent = officeAgents.find((item) => item.id === selectedAgentId); if (!agent || !confirm(uiText(`确定删除 ${agent.name} 吗？`))) return; officeAgents = officeAgents.filter((item) => item.id !== selectedAgentId); saveAgents(); hideAgentMenu(); render(); });
 document.querySelector("#agent-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); officeAgents = officeAgents.map((agent) => agent.id === data.get("id") ? { ...agent, name: data.get("name").trim(), role: data.get("role") } : agent); saveAgents(); render(); document.querySelector("#agent-dialog").close(); });
 
 document.querySelector("#chat-form").addEventListener("submit", (event) => { event.preventDefault(); const input = document.querySelector("#chat-input"); const content = input.value.trim(); if (!content) return; input.value = ""; sendChat(content); });
@@ -1418,7 +1420,7 @@ document.querySelector("#document-form").addEventListener("submit", async (event
   finally { button.disabled = false; button.textContent = "读取资料"; }
 });
 document.querySelector("#external-resources").addEventListener("click", (event) => { const id = event.target.dataset.deleteResource; if (!id) return; externalResources = externalResources.filter((resource) => resource.id !== id); saveExternalResources(); renderExternalResources(); renderWorkflow(); });
-document.querySelector("#clear-resources-button").addEventListener("click", () => { if (!externalResources.length || confirm("确定清空所有外部资源吗？")) { externalResources = []; saveExternalResources(); renderExternalResources(); renderWorkflow(); } });
+document.querySelector("#clear-resources-button").addEventListener("click", () => { if (!externalResources.length || confirm(uiText("确定清空所有外部资源吗？"))) { externalResources = []; saveExternalResources(); renderExternalResources(); renderWorkflow(); } });
 
 document.querySelector("#new-model-profile-button").addEventListener("click", () => openModelProfileDialog());
 document.querySelectorAll("[data-close-model-profile]").forEach((button) => button.addEventListener("click", () => document.querySelector("#model-profile-dialog").close()));
@@ -1448,7 +1450,7 @@ document.querySelector("#model-profile-list").addEventListener("click", async (e
     finally { button.disabled = false; button.classList.remove("testing"); }
     return;
   }
-  if (deleteId && confirm("确定删除这个模型连接吗？相关智能体将自动回退到主模型。")) {
+  if (deleteId && confirm(uiText("确定删除这个模型连接吗？相关智能体将自动回退到主模型。"))) {
     try { modelPoolState = await window.desktop.deleteModelProfile(deleteId); renderModelPool(); setModelPoolFeedback("模型连接已删除，相关路由已回退", "success"); }
     catch (error) { setModelPoolFeedback(`删除失败：${error.message}`, "error"); }
   }
@@ -1590,6 +1592,16 @@ const managerLines = ["大家加油，记得保存进度哦！", "我来看看�
 let managerLine = 0;
 setInterval(() => { managerLine = (managerLine + 1) % managerLines.length; document.querySelector("#manager-speech").textContent = managerLines[managerLine]; }, 9000);
 setInterval(() => renderOffice(), 3000);
+
+document.addEventListener("app-language-change", () => {
+  renderSkills();
+  renderChat();
+  renderWorkflowChat();
+  renderModelPool();
+  renderPlugins();
+  render();
+  queueMicrotask(() => window.AppI18n?.refresh());
+});
 
 if (!window.WorkflowState?.templates?.[workflowEditorState.activeMode]) workflowEditorState.activeMode = "software";
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.workflowMode === workflowEditorState.activeMode));

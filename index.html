@@ -140,6 +140,10 @@
         </section>
         <section class="view" data-view-panel="settings">
           <header class="topbar"><div><p class="eyebrow">Model Layer</p><h1>模型与 API 配置</h1></div><span class="session-label">Windows 系统加密保存</span></header>
+          <section class="language-settings" aria-labelledby="language-settings-title">
+            <div><p class="eyebrow">Language</p><h2 id="language-settings-title">界面语言</h2><p>选择软件显示语言</p></div>
+            <div class="language-control"><div class="language-segmented" role="group" aria-label="界面语言"><button class="active" type="button" data-language="zh-CN" aria-pressed="true">简体中文</button><button type="button" data-language="en-US" aria-pressed="false">英文</button></div><small id="language-setting-state">语言设置会立即生效并在重启后保留。</small></div>
+          </section>
           <section class="settings-layout">
             <form class="settings-form" id="model-settings-form">
               <div class="panel-heading"><div><p class="eyebrow">连接配置</p><h2>主模型</h2></div><span class="connection-state" id="connection-state">未配置</span></div>
@@ -287,6 +291,8 @@
       <strong id="mode-progress-label">0%</strong>
     </div>
     <script src="workflow-state.js"></script>
+    <script src="i18n-core.js"></script>
+    <script src="i18n.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
