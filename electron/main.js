@@ -18,6 +18,7 @@ const { createKnowledgeLibraryRuntime } = require("./knowledge-library-runtime")
 const { createConfigurationVaultRuntime } = require("./configuration-vault-runtime");
 const { createComputerAccessRuntime } = require("./computer-access-runtime");
 const { createMediaGenerationRuntime } = require("./media-generation-runtime");
+const { readJsonWithBackup, atomicWriteJson } = require("./settings-file-utils");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
@@ -36,6 +37,7 @@ let mediaGenerationRuntime = null;
 let mainWindow = null;
 let petWindow = null;
 let petLocale = "zh-CN";
+let petDragSession = null;
 const computerAccessPermissions = new Map();
 let updateInstallStarted = false;
 
@@ -273,14 +275,44 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
   return window;
 };
 
+const PET_WINDOW_SIZE = Object.freeze({ width: 356, height: 278 });
+
+function petPositionPath() { return path.join(app.getPath("userData"), "pet-position.json"); }
+
+function clampPetPosition(x, y) {
+  const point = { x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) };
+  const workArea = screen.getDisplayNearestPoint({ x: point.x + Math.round(PET_WINDOW_SIZE.width / 2), y: point.y + Math.round(PET_WINDOW_SIZE.height / 2) }).workArea;
+  return {
+    x: Math.max(workArea.x, Math.min(point.x, workArea.x + workArea.width - PET_WINDOW_SIZE.width)),
+    y: Math.max(workArea.y, Math.min(point.y, workArea.y + workArea.height - PET_WINDOW_SIZE.height))
+  };
+}
+
+function initialPetPosition() {
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const fallback = { x: workArea.x + workArea.width - PET_WINDOW_SIZE.width - 16, y: workArea.y + Math.round((workArea.height - PET_WINDOW_SIZE.height) * 0.38) };
+  try {
+    const saved = readJsonWithBackup(petPositionPath(), (value) => Number.isFinite(value?.x) && Number.isFinite(value?.y), fallback);
+    return clampPetPosition(saved.x, saved.y);
+  } catch { return clampPetPosition(fallback.x, fallback.y); }
+}
+
+function savePetPosition() {
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const { x, y } = petWindow.getBounds();
+  try { atomicWriteJson(petPositionPath(), { version: 1, x, y, updatedAt: new Date().toISOString() }); }
+  catch (error) { console.error(`保存桌宠位置失败：${error.message}`); }
+}
+
+function isPetEvent(event) { return Boolean(petWindow && !petWindow.isDestroyed() && event.sender === petWindow.webContents); }
+
 function createPetWindow() {
   if (petWindow && !petWindow.isDestroyed()) return petWindow;
-  const workArea = screen.getPrimaryDisplay().workArea;
+  const position = initialPetPosition();
   petWindow = new BrowserWindow({
-    width: 356,
-    height: 278,
-    x: workArea.x + workArea.width - 372,
-    y: workArea.y + workArea.height - 294,
+    ...PET_WINDOW_SIZE,
+    x: position.x,
+    y: position.y,
     frame: false,
     transparent: true,
     resizable: false,
@@ -305,7 +337,7 @@ function createPetWindow() {
   petWindow.webContents.on("will-navigate", (event, url) => { if (url !== petWindow.webContents.getURL()) event.preventDefault(); });
   petWindow.webContents.once("did-finish-load", () => sendPet("pet:locale", petLocale));
   petWindow.once("ready-to-show", () => { if (!process.env.AI_TEAM_SCREENSHOT) petWindow.showInactive(); });
-  petWindow.on("closed", () => { petWindow = null; });
+  petWindow.on("closed", () => { petWindow = null; petDragSession = null; });
   return petWindow;
 }
 
@@ -360,6 +392,18 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle("pet:open-main", async () => { await ensureMainWindow(); return { opened: true }; });
     ipcMain.handle("pet:quit", () => { app.quit(); return { quitting: true }; });
+    ipcMain.handle("pet:get-bounds", (event) => { if (!isPetEvent(event)) throw new Error("仅桌宠窗口可以读取桌宠位置"); return petWindow.getBounds(); });
+    ipcMain.on("pet:drag-start", (event, payload = {}) => {
+      if (!isPetEvent(event) || !Number.isFinite(payload.screenX) || !Number.isFinite(payload.screenY)) return;
+      const bounds = petWindow.getBounds();
+      petDragSession = { startScreenX: payload.screenX, startScreenY: payload.screenY, startWindowX: bounds.x, startWindowY: bounds.y };
+    });
+    ipcMain.on("pet:drag-move", (event, payload = {}) => {
+      if (!isPetEvent(event) || !petDragSession || !Number.isFinite(payload.screenX) || !Number.isFinite(payload.screenY)) return;
+      const position = clampPetPosition(petDragSession.startWindowX + payload.screenX - petDragSession.startScreenX, petDragSession.startWindowY + payload.screenY - petDragSession.startScreenY);
+      petWindow.setPosition(position.x, position.y, false);
+    });
+    ipcMain.on("pet:drag-end", (event) => { if (!isPetEvent(event) || !petDragSession) return; petDragSession = null; savePetPosition(); });
     ipcMain.handle("pet:response", (_event, payload) => { sendPet("pet:response", payload || {}); return { delivered: true }; });
     ipcMain.handle("pet:speaking", (_event, speaking) => { sendPet("pet:state", { state: speaking ? "speaking" : "idle" }); return { delivered: true }; });
     ipcMain.handle("pet:locale", (_event, locale) => { petLocale = locale === "en-US" ? "en-US" : "zh-CN"; sendPet("pet:locale", petLocale); return { delivered: true }; });

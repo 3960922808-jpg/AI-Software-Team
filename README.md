@@ -4,7 +4,7 @@
 
 主 Agent 负责理解目标、拆解任务与最终审查；10 个专业 Agent 使用各自的模型路由和特调 Skill 完成产品、架构、前端、后端、数据库、测试、安全、代码审查与交付工作。所有执行步骤、文件产物、真实检查、自动修复和 Git 快照都有记录。
 
-> 当前版本：`v0.23.0` · 支持简体中文和英文 · 提供 Windows x64 ZIP 免安装版
+> 当前版本：`v0.23.1` · 支持简体中文和英文 · 提供 Windows x64 ZIP 免安装版
 
 ## 下载
 
@@ -39,6 +39,7 @@
 
 - Agent 工作室以办公室和主对话框为中心，可查看 10 个 Agent 的真实任务状态、进度和工作反馈。
 - 灵灵现在也是独立的透明置顶桌宠。点击即可发布任务，任务会进入同一主 Agent 对话与调度闭环；右键可打开完整工作台。
+- 按住灵灵即可拖到任意屏幕位置，窗口会限制在显示器可见区域内，并在重启和更新后恢复上次位置；首次启动位于屏幕右侧中部。
 - 灵灵朗读回复时，桌宠与工作室角色头顶会同步显示三条绿色圆角语音动画；语音结束、失败或手动停止后会可靠收起。
 - 工作室与工作流对话都支持 `@Agent` 单独派活和 `/Skill` 调用技能，自动补全来自当前 Agent 与已启用 Skill。
 - 可视化工作流支持软件研发、生图和视频模板；图片与视频模式使用 `3400 × 2100` 大画布和类似 ComfyUI 的端口节点编排。
@@ -155,7 +156,7 @@ pnpm run test:electron
 pnpm run build:windows
 ```
 
-输出位于 `release-v0.23.0/`，生成 x64 ZIP 免安装版。GitHub Release 只发布 ZIP 包。
+输出位于 `release-v0.23.1/`，生成 x64 ZIP 免安装版。GitHub Release 只发布 ZIP 包。
 
 开发环境可以参考 `.env.example` 设置主模型后备配置。仓库中不要提交 API Key、GitHub Token、`.env` 或其他真实密钥。
 
@@ -163,7 +164,7 @@ pnpm run build:windows
 
 AI Software Team is a native Windows multi-agent software development workspace built with Electron. A primary agent decomposes and routes user goals to ten specialist agents, which generate real files, run controlled checks, repair failures, create Git snapshots, and produce auditable delivery records.
 
-Version `0.23.0` adds Lingling as a transparent always-on-top desktop companion connected to the same primary-agent chat and task orchestrator. Speech playback is synchronized with three green voice bars in both the companion and studio. The full-screen image/video workflow keeps every mode and tool visible, supports inline prompt editing and real reference-image input, persists only local paths, and sends media requests through Electron networking for Windows proxy compatibility. The entire interface, including the new controls and companion, supports Simplified Chinese and English.
+Version `0.23.1` makes Lingling freely draggable across displays and restores the last visible position after restart or update. It also includes the transparent always-on-top companion, synchronized green voice bars, full-screen media workflows, inline prompts, real reference-image input, and Windows proxy-compatible media networking.
 
 Download the latest Windows build from [Releases](https://github.com/3960922808-jpg/AI-Software-Team/releases).
 
