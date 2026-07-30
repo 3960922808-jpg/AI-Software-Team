@@ -125,6 +125,7 @@ if (!Array.isArray(workflowChatMessages)) workflowChatMessages = [];
 let currentWorkflow = null;
 let workflowConnectSource = null;
 let workflowConnectSourcePort = null;
+let activeMediaPanel = null;
 let workflowDragging = null;
 let workflowContextNodeId = null;
 let workflowSuppressClick = false;
@@ -350,7 +351,7 @@ function renderWorkflowParameterFields(node) {
     const value = parameters[field.key] ?? "";
     const common = `data-workflow-parameter="${escapeHtml(field.key)}" name="${escapeHtml(field.key)}"`;
     if (field.type === "textarea") return `<label>${escapeHtml(field.label)}<textarea ${common} rows="${Number(field.rows) || 4}">${escapeHtml(value)}</textarea></label>`;
-    if (field.type === "select") return `<label>${escapeHtml(field.label)}<select ${common}>${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${String(option) === String(value) ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select></label>`;
+    if (field.type === "select") return `<label>${escapeHtml(field.label)}<select ${common}>${(field.options || []).map((option) => { const optionValue = typeof option === "object" ? option.value : option; const optionLabel = typeof option === "object" ? option.label : option; return `<option value="${escapeHtml(optionValue)}" ${String(optionValue) === String(value) ? "selected" : ""}>${escapeHtml(optionLabel)}</option>`; }).join("")}</select></label>`;
     if (field.type === "checkbox") return `<label class="workflow-parameter-check"><input ${common} type="checkbox" ${value ? "checked" : ""} /><span>${escapeHtml(field.label)}</span></label>`;
     if (field.type === "number") return `<label>${escapeHtml(field.label)}<input ${common} type="number" value="${escapeHtml(value)}" ${field.min !== undefined ? `min="${field.min}"` : ""} ${field.max !== undefined ? `max="${field.max}"` : ""} ${field.step !== undefined ? `step="${field.step}"` : ""} /></label>`;
     return `<label>${escapeHtml(field.label)}<input ${common} type="text" value="${escapeHtml(value)}" /></label>`;
@@ -363,8 +364,9 @@ function mediaNodeSummary(node) {
 }
 
 function mediaNodeMarkup(node) {
-  const inputPorts = (node.inputs || []).map((port) => `<span class="media-port input" data-port="${escapeHtml(port)}"><i></i><b>${escapeHtml(port)}</b></span>`).join("");
-  const outputPorts = (node.outputs || []).map((port) => `<span class="media-port output" data-port="${escapeHtml(port)}"><b>${escapeHtml(port)}</b><i></i></span>`).join("");
+  const portLabels = { MODEL: "模型", CLIP: "文字理解", ENCODER: "文字理解", VAE: "成图工具", CONDITIONING: "画面描述", POSITIVE: "想要内容", NEGATIVE: "排除内容", LATENT: "画面底稿", SAMPLES: "生成画面", IMAGE: "图片", FILE: "文件", RESULT: "完成", MOTION: "镜头设置", LATENT_VIDEO: "视频底稿", FRAMES: "视频画面", TIMELINE: "声音字幕" };
+  const inputPorts = (node.inputs || []).map((port) => `<span class="media-port input" data-port="${escapeHtml(port)}"><i></i><b>${escapeHtml(portLabels[port] || port)}</b></span>`).join("");
+  const outputPorts = (node.outputs || []).map((port) => `<span class="media-port output" data-port="${escapeHtml(port)}"><b>${escapeHtml(portLabels[port] || port)}</b><i></i></span>`).join("");
   return `<article class="workflow-node media ${node.state} ${node.id === selectedWorkflowNodeId ? "selected" : ""}" data-workflow-node="${escapeHtml(node.id)}" tabindex="0" aria-label="${escapeHtml(node.title)}"><header><span>${escapeHtml(node.code || "NODE")}</span><strong>${escapeHtml(node.title)}</strong></header><div class="media-node-body"><div class="media-port-column inputs">${inputPorts}</div><div class="media-port-column outputs">${outputPorts}</div></div><p>${escapeHtml(mediaNodeSummary(node))}</p><footer><span>${(node.inputs || []).length} 入</span><span>${(node.outputs || []).length} 出</span></footer></article>`;
 }
 
@@ -449,13 +451,24 @@ function renderWorkflow() {
 function renderMediaWorkflowChrome(workflow) {
   const mediaMode = ["image", "video"].includes(workflow.mode);
   const library = document.querySelector("#media-node-library");
+  const inspector = document.querySelector("#workflow-inspector");
+  const backdrop = document.querySelector("#workflow-drawer-backdrop");
   const resultPanel = document.querySelector("#media-workflow-result");
-  library.hidden = !mediaMode;
+  const mediaFullscreen = mediaMode && interfaceMode === "workflow" && activeViewName === "workflow";
+  document.body.classList.toggle("media-workflow-active", mediaFullscreen);
+  document.querySelectorAll(".media-toolbar-button").forEach((button) => { button.hidden = !mediaMode; });
+  document.querySelector("#workflow-add-node").hidden = mediaMode;
+  library.hidden = !mediaMode || activeMediaPanel !== "library";
+  inspector.hidden = mediaMode && !["parameters", "chat"].includes(activeMediaPanel);
+  inspector.classList.toggle("show-parameters", mediaMode && activeMediaPanel === "parameters");
+  inspector.classList.toggle("show-chat", mediaMode && activeMediaPanel === "chat");
+  backdrop.hidden = !mediaMode || !activeMediaPanel;
+  for (const [buttonId, panel] of [["media-library-toggle", "library"], ["workflow-inspector-toggle", "parameters"], ["workflow-chat-toggle", "chat"]]) document.querySelector(`#${buttonId}`).classList.toggle("active", mediaMode && activeMediaPanel === panel);
   resultPanel.hidden = !mediaMode;
   document.querySelector("#workflow-viewport").classList.toggle("media", mediaMode);
   document.querySelector(".workflow-canvas-panel").classList.toggle("media", mediaMode);
-  if (!mediaMode) return;
-  document.querySelector("#media-node-library-title").textContent = workflow.mode === "image" ? "生图节点库" : "视频节点库";
+  if (!mediaMode) { inspector.hidden = false; return; }
+  document.querySelector("#media-node-library-title").textContent = workflow.mode === "image" ? "添加生图步骤" : "添加视频步骤";
   document.querySelector("#media-node-library-list").innerHTML = workflow.template.nodes.map((node) => `<button type="button" data-media-library-node="${escapeHtml(node.id)}"><span>${escapeHtml(node.code)}</span><b>${escapeHtml(node.title)}</b><small>${escapeHtml(node.subtitle)}</small></button>`).join("");
   const state = document.querySelector("#media-result-state");
   const pathLabel = document.querySelector("#media-result-path");
@@ -522,13 +535,52 @@ function setWorkflowScale(nextScale) {
   document.querySelector("#workflow-scale-label").textContent = `${Math.round(workflowScale * 100)}%`;
 }
 
+function fitMediaWorkflow(options = {}) {
+  if (!["image", "video"].includes(workflowEditorState.activeMode) || !currentWorkflow?.nodes.length) return;
+  const viewport = document.querySelector("#workflow-viewport");
+  const canvas = document.querySelector("#workflow-canvas");
+  const nodes = currentWorkflow.nodes;
+  const minX = Math.min(...nodes.map((node) => node.x));
+  const minY = Math.min(...nodes.map((node) => node.y));
+  const maxX = Math.max(...nodes.map((node) => node.x + (node.width || 290)));
+  const maxY = Math.max(...nodes.map((node) => node.y + (node.height || 160)));
+  const padding = 54;
+  const availableWidth = Math.max(320, viewport.clientWidth - padding * 2);
+  const availableHeight = Math.max(260, viewport.clientHeight - padding * 2);
+  const scale = Math.min(1, availableWidth / Math.max(1, maxX - minX), availableHeight / Math.max(1, maxY - minY));
+  if (options.immediate) canvas.style.transition = "none";
+  setWorkflowScale(Math.max(.35, scale));
+  if (options.immediate) void canvas.offsetWidth;
+  const left = Math.max(0, minX * workflowScale - padding);
+  const top = Math.max(0, minY * workflowScale - padding);
+  viewport.scrollTo({ left, top, behavior: options.immediate ? "auto" : "smooth" });
+  if (options.immediate) requestAnimationFrame(() => canvas.style.removeProperty("transition"));
+}
+
 function centerWorkflowCanvas() {
+  if (["image", "video"].includes(workflowEditorState.activeMode)) { fitMediaWorkflow(); return; }
   const viewport = document.querySelector("#workflow-viewport");
   const canvas = document.querySelector("#workflow-canvas");
   const left = Math.max(0, (canvas.offsetWidth * workflowScale - viewport.clientWidth) / 2);
   const manager = currentWorkflow?.nodes.find((node) => node.manager || node.type === "manager");
   const top = Math.max(0, ((manager?.y || 0) - viewport.clientHeight / (2 * workflowScale)) * workflowScale);
   viewport.scrollTo({ left: Math.min(left, 120), top, behavior: "smooth" });
+}
+
+function setMediaPanel(panel = null) {
+  activeMediaPanel = activeMediaPanel === panel ? null : panel;
+  if (currentWorkflow) renderMediaWorkflowChrome(currentWorkflow);
+}
+
+function repairOverlappingMediaLayout(mode) {
+  if (!["image", "video"].includes(mode)) return;
+  const template = window.WorkflowState.templates[mode];
+  const editor = getWorkflowModeState(mode);
+  const boxes = template.nodes.map((node) => ({ ...node, ...(editor.positions[node.id] || {}) }));
+  const overlaps = boxes.some((left, index) => boxes.slice(index + 1).some((right) => left.x < right.x + (right.width || 290) && left.x + (left.width || 290) > right.x && left.y < right.y + (right.height || 160) && left.y + (left.height || 160) > right.y));
+  if (!overlaps) return;
+  for (const node of template.nodes) delete editor.positions[node.id];
+  saveWorkflowEditor();
 }
 
 function updateWorkflowNodeProgress(nodeId, value) {
@@ -746,8 +798,11 @@ function applyInterfaceMode(mode) {
   if (interfaceMode === "workflow") {
     activateView("workflow");
     renderWorkflow();
-    requestAnimationFrame(centerWorkflowCanvas);
-  } else activateView(lastStudioView === "workflow" ? "projects" : lastStudioView);
+    requestAnimationFrame(() => ["image", "video"].includes(workflowEditorState.activeMode) ? fitMediaWorkflow({ immediate: true }) : centerWorkflowCanvas());
+  } else {
+    document.body.classList.remove("media-workflow-active");
+    activateView(lastStudioView === "workflow" ? "projects" : lastStudioView);
+  }
 }
 
 function animateModeProgress(from, to, duration) {
@@ -1569,7 +1624,7 @@ function renderUpdateState(nextState = updateState) {
   const progress = Number(updateState.progress || 0);
   document.querySelector("#update-progress-bar").value = progress;
   document.querySelector("#update-progress-percent").textContent = `${progress}%`;
-  document.querySelector("#update-progress-label").textContent = updateState.status === "extracting" ? "正在解压并校验更新包" : updateState.status === "ready" ? "更新已下载，重启后覆盖旧版本" : "正在从 GitHub Releases 下载";
+  document.querySelector("#update-progress-label").textContent = updateState.status === "extracting" ? "正在解压并校验更新包" : updateState.status === "ready" ? "更新已下载，重启后覆盖旧版本" : updateState.downloadMethod === "system" ? "常规下载受阻，已切换 Windows 系统下载" : "正在从 GitHub Releases 下载";
   const messages = { idle: "软件会从 GitHub Releases 安全检查 Windows ZIP 新版本。", checking: "正在连接 GitHub Releases…", available: `v${updateState.latestVersion} 可以下载。`, "up-to-date": "当前已是最新版本。", downloading: "更新正在后台下载，您可以继续使用软件。", extracting: "下载完成，正在验证桌面程序结构。", ready: "更新已准备好。立即重启，或在下次退出时自动安装。", installing: "软件即将退出并覆盖安装新版本。" };
   const feedback = document.querySelector("#update-feedback");
   feedback.textContent = updateState.error ? `更新失败：${updateState.error}` : messages[updateState.status] || messages.idle;
@@ -1808,16 +1863,26 @@ document.querySelectorAll("[data-interface-mode]").forEach((button) => button.ad
 document.querySelector("#workflow-task-select").addEventListener("change", (event) => { selectedWorkflowTaskId = event.target.value || null; selectedWorkflowNodeId = "commander"; renderWorkflow(); });
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.addEventListener("click", () => {
   workflowEditorState.activeMode = button.dataset.workflowMode;
-  workflowScale = ["image", "video"].includes(workflowEditorState.activeMode) ? .55 : 1;
+  const mediaMode = ["image", "video"].includes(workflowEditorState.activeMode);
+  workflowScale = mediaMode ? .55 : 1;
+  activeMediaPanel = null;
+  repairOverlappingMediaLayout(workflowEditorState.activeMode);
   const template = window.WorkflowState.templates[workflowEditorState.activeMode];
   selectedWorkflowNodeId = template.nodes.find((node) => node.manager)?.id || template.nodes[0]?.id;
   workflowConnectSource = null;
   saveWorkflowEditor();
   document.querySelectorAll("[data-workflow-mode]").forEach((item) => item.classList.toggle("active", item === button));
   renderWorkflow();
-  requestAnimationFrame(centerWorkflowCanvas);
+  requestAnimationFrame(() => mediaMode ? fitMediaWorkflow({ immediate: true }) : centerWorkflowCanvas());
 }));
 document.querySelector("#workflow-add-node").addEventListener("click", () => openWorkflowNodeDialog());
+document.querySelector("#media-library-toggle").addEventListener("click", () => setMediaPanel("library"));
+document.querySelector("#workflow-inspector-toggle").addEventListener("click", () => setMediaPanel("parameters"));
+document.querySelector("#workflow-chat-toggle").addEventListener("click", () => setMediaPanel("chat"));
+document.querySelector("#media-library-close").addEventListener("click", () => setMediaPanel(null));
+document.querySelector("#workflow-inspector-close").addEventListener("click", () => setMediaPanel(null));
+document.querySelector("#workflow-chat-close").addEventListener("click", () => setMediaPanel(null));
+document.querySelector("#workflow-drawer-backdrop").addEventListener("click", () => setMediaPanel(null));
 document.querySelector("#workflow-connect").addEventListener("click", () => {
   if (document.querySelector("#workflow-canvas").classList.contains("connecting")) cancelWorkflowConnection();
   else {
@@ -1839,6 +1904,7 @@ document.querySelector("#workflow-nodes").addEventListener("click", (event) => {
     return;
   }
   selectedWorkflowNodeId = id;
+  if (["image", "video"].includes(workflowEditorState.activeMode)) activeMediaPanel = "parameters";
   renderWorkflow();
 });
 document.querySelector("#workflow-nodes").addEventListener("pointerdown", (event) => {
@@ -1852,7 +1918,7 @@ document.querySelector("#workflow-nodes").addEventListener("pointerdown", (event
   element.setPointerCapture?.(event.pointerId);
   element.classList.add("dragging");
 });
-document.addEventListener("pointermove", (event) => {
+function moveWorkflowDrag(event) {
   if (!workflowDragging && workflowConnectSource) updateWorkflowConnectionPreview(event);
   if (!workflowDragging) return;
   const dx = (event.clientX - workflowDragging.startX) / workflowScale;
@@ -1866,8 +1932,8 @@ document.addEventListener("pointermove", (event) => {
   if (node) { node.x = x; node.y = y; }
   const byId = Object.fromEntries(currentWorkflow.nodes.map((item) => [item.id, item]));
   document.querySelectorAll("[data-workflow-edge]").forEach((path) => { const edge = currentWorkflow.edges.find((item) => item.id === path.dataset.workflowEdge); if (edge) path.setAttribute("d", workflowPath(edge, byId)); });
-});
-document.addEventListener("pointerup", () => {
+}
+function finishWorkflowDrag() {
   if (!workflowDragging) return;
   workflowDragging.element.classList.remove("dragging");
   if (workflowDragging.moved) {
@@ -1878,7 +1944,13 @@ document.addEventListener("pointerup", () => {
   const moved = workflowDragging.moved;
   workflowDragging = null;
   if (moved) { workflowSuppressClick = true; setTimeout(() => { workflowSuppressClick = false; }, 0); }
-});
+}
+document.addEventListener("pointermove", moveWorkflowDrag);
+document.addEventListener("mousemove", (event) => { if (workflowDragging) moveWorkflowDrag(event); });
+document.addEventListener("pointerup", finishWorkflowDrag);
+document.addEventListener("mouseup", finishWorkflowDrag);
+document.addEventListener("pointercancel", finishWorkflowDrag);
+window.addEventListener("blur", finishWorkflowDrag);
 function positionFloatingMenu(menu, clientX, clientY) {
   menu.style.left = "0px";
   menu.style.top = "0px";
@@ -1941,11 +2013,11 @@ document.querySelector("#workflow-parameter-fields").addEventListener("change", 
   editor.nodeOverrides[node.id] = { ...override, parameters: { ...(override.parameters || {}), [field.dataset.workflowParameter]: value } };
   saveWorkflowEditor(); renderWorkflow();
 });
-document.querySelector("#media-node-library-list").addEventListener("click", (event) => { const button = event.target.closest("[data-media-library-node]"); if (button) addMediaLibraryNode(button.dataset.mediaLibraryNode); });
+document.querySelector("#media-node-library-list").addEventListener("click", (event) => { const button = event.target.closest("[data-media-library-node]"); if (button) { addMediaLibraryNode(button.dataset.mediaLibraryNode); activeMediaPanel = "parameters"; renderWorkflow(); } });
 document.querySelector("#workflow-edge-list").addEventListener("click", (event) => { if (event.target.dataset.workflowEdgeDelete) removeWorkflowEdge(event.target.dataset.workflowEdgeDelete); });
 document.querySelector("#workflow-zoom-out").addEventListener("click", () => setWorkflowScale(workflowScale - .1));
 document.querySelector("#workflow-zoom-in").addEventListener("click", () => setWorkflowScale(workflowScale + .1));
-document.querySelector("#workflow-center").addEventListener("click", centerWorkflowCanvas);
+document.querySelector("#workflow-center").addEventListener("click", () => ["image", "video"].includes(workflowEditorState.activeMode) ? fitMediaWorkflow() : centerWorkflowCanvas());
 document.querySelector("#workflow-run-button").addEventListener("click", () => { if (["image", "video"].includes(workflowEditorState.activeMode)) executeMediaWorkflow(); else if (selectedWorkflowTaskId) executeNextTask(selectedWorkflowTaskId); });
 document.querySelector("#media-result-open").addEventListener("click", async () => { if (mediaWorkflowResult?.filePath) await window.desktop.openMediaOutput(mediaWorkflowResult.filePath); });
 
@@ -2401,7 +2473,7 @@ document.querySelectorAll("#update-auto-check,#update-auto-download,#update-inst
   catch (error) { renderUpdateState({ ...updateState, status: "error", error: error.message }); }
 }));
 document.querySelector("#update-check-button").addEventListener("click", async () => { const button = document.querySelector("#update-check-button"); button.disabled = true; try { renderUpdateState(await window.desktop.checkForUpdates()); } catch { /* 更新状态事件已经包含具体错误。 */ } finally { button.disabled = false; } });
-document.querySelector("#update-download-button").addEventListener("click", async () => { try { renderUpdateState(await window.desktop.downloadUpdate()); } catch { /* 更新状态事件已经包含具体错误。 */ } });
+document.querySelector("#update-download-button").addEventListener("click", async () => { const button = document.querySelector("#update-download-button"); button.disabled = true; try { renderUpdateState(await window.desktop.downloadUpdate()); } catch { /* 更新状态事件已经包含具体错误。 */ } finally { button.disabled = false; } });
 document.querySelector("#update-restart-button").addEventListener("click", async () => { document.querySelector("#update-restart-button").disabled = true; try { await window.desktop.restartToUpdate(); } catch (error) { renderUpdateState({ ...updateState, status: "error", error: error.message }); document.querySelector("#update-restart-button").disabled = false; } });
 document.querySelector("#update-release-button").addEventListener("click", () => { if (updateState.releaseUrl) window.desktop.openExternal(updateState.releaseUrl).catch((error) => renderUpdateState({ ...updateState, status: "error", error: error.message })); });
 window.desktop?.onUpdateState?.((state) => renderUpdateState(state));
@@ -2430,6 +2502,7 @@ document.addEventListener("app-language-change", () => {
 
 if (!window.WorkflowState?.templates?.[workflowEditorState.activeMode]) workflowEditorState.activeMode = "software";
 workflowScale = ["image", "video"].includes(workflowEditorState.activeMode) ? .55 : 1;
+repairOverlappingMediaLayout(workflowEditorState.activeMode);
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.workflowMode === workflowEditorState.activeMode));
 selectedWorkflowNodeId = window.WorkflowState?.templates?.[workflowEditorState.activeMode]?.nodes.find((node) => node.manager)?.id || "commander";
 installViewBackButtons(); loadModelSettings(); loadConfigurationVault(); loadMediaModels(); loadVoiceSettings(); loadModelPool(); loadPlugins(); loadKnowledgeDocuments(); loadMemoryGraph(); loadComputerAccess(); loadUpdateState(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);

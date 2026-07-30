@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, clipboard, desktopCapturer } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, clipboard, desktopCapturer, net } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
@@ -120,6 +120,7 @@ function initializeModelSettings() {
     userDataPath: app.getPath("userData"),
     installPath: path.dirname(process.execPath),
     executablePath: process.execPath,
+    fetchImpl: (url, options) => net.fetch(url, options),
   });
   const saved = modelSettingsStore.load();
   if (saved) modelRuntime.configure(saved);

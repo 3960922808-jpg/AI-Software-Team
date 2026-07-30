@@ -1,6 +1,6 @@
 {
   "name": "ai-software-team",
-  "version": "0.22.0",
+  "version": "0.22.1",
   "description": "Windows 多智能体研发工作台：真实 Agent 调度、文档与小说知识库、端口化媒体工作流、完全访问、配置保险箱、执行沙箱与自动更新",
   "main": "electron/main.js",
   "author": "AI Software Team",
@@ -22,7 +22,7 @@
     "asar": true,
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "release-v0.22"
+      "output": "release-v0.22.1"
     },
     "files": [
       "index.html",

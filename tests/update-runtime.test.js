@@ -2,6 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const AdmZip = require("adm-zip");
 const { compareVersions, parseVersion, selectReleaseAsset, createUpdateRuntime } = require("../electron/update-runtime");
 
 async function main() {
@@ -25,7 +26,36 @@ async function main() {
     assert.equal(updatedRuntime.status().currentVersion, "0.20.0");
     assert.equal(updatedRuntime.status().readyToInstall, false);
     assert.equal(updatedRuntime.status().status, "idle");
-    console.log("通过：语义版本比较、Release 资源选择、更新检查与设置持久化");
+
+    const archivePath = path.join(root, "fixture.zip");
+    const archive = new AdmZip();
+    archive.addFile("AI Software Team.exe", Buffer.from("exe"));
+    archive.addFile("resources/app.asar", Buffer.from("asar"));
+    archive.writeZip(archivePath);
+    const archiveSize = fs.statSync(archivePath).size;
+    let fallbackCalls = 0;
+    const releaseFetch = async (url) => {
+      if (String(url).includes("api.github.com")) return new Response(JSON.stringify({ tag_name: "v0.22.1", html_url: "https://github.com/example/release", body: "Fix", assets: [{ name: "AI.Software.Team-0.22.1-x64.zip", size: archiveSize, browser_download_url: "https://example.com/update.zip" }] }), { status: 200 });
+      throw new Error("模拟 Electron 网络失败");
+    };
+    const fallbackDownloadImpl = async (_url, targetPath, onProgress) => {
+      fallbackCalls += 1;
+      fs.copyFileSync(archivePath, targetPath);
+      onProgress?.({ received: archiveSize, total: archiveSize, percent: 100, fallback: true });
+      const crypto = require("crypto");
+      return { bytes: archiveSize, sha256: crypto.createHash("sha256").update(fs.readFileSync(targetPath)).digest("hex") };
+    };
+    const fallbackRuntime = createUpdateRuntime({ currentVersion: "0.22.0", userDataPath: path.join(root, "fallback"), fetchImpl: releaseFetch, fallbackDownloadImpl });
+    await fallbackRuntime.check();
+    const firstDownload = fallbackRuntime.download();
+    const duplicateDownload = fallbackRuntime.download();
+    assert.strictEqual(firstDownload, duplicateDownload);
+    const ready = await firstDownload;
+    assert.equal(fallbackCalls, 1);
+    assert.equal(ready.status, "ready");
+    assert.equal(ready.downloadMethod, "system");
+    assert.ok(fs.existsSync(path.join(ready.packageRoot, "resources", "app.asar")));
+    console.log("通过：语义版本、资源选择、持久化、重复点击保护与系统备用下载");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }
 

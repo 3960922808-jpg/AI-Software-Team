@@ -61,6 +61,7 @@ async function downloadFile(url, targetPath, fetchImpl, onProgress) {
   if (!response.ok || !response.body) throw new Error(`更新包下载失败：HTTP ${response.status}`);
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   const temporary = `${targetPath}.part`;
+  fs.rmSync(temporary, { force: true });
   const writer = fs.createWriteStream(temporary);
   const reader = response.body.getReader();
   const total = Number(response.headers.get("content-length") || 0);
@@ -87,6 +88,35 @@ async function downloadFile(url, targetPath, fetchImpl, onProgress) {
   return { bytes: received, sha256: hash.digest("hex") };
 }
 
+async function hashFile(filePath) {
+  const hash = crypto.createHash("sha256");
+  let bytes = 0;
+  for await (const chunk of fs.createReadStream(filePath)) { hash.update(chunk); bytes += chunk.length; }
+  return { bytes, sha256: hash.digest("hex") };
+}
+
+async function downloadFileWithPowerShell(url, targetPath, onProgress) {
+  fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  const temporary = `${targetPath}.part`;
+  fs.rmSync(temporary, { force: true });
+  onProgress?.({ received: 0, total: 0, percent: 0, fallback: true });
+  try {
+    await execFileAsync("powershell.exe", [
+      "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
+      "$ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing -Uri $env:AI_TEAM_UPDATE_URL -OutFile $env:AI_TEAM_UPDATE_TARGET"
+    ], { windowsHide: true, timeout: 20 * 60 * 1000, maxBuffer: 1024 * 1024, env: { ...process.env, AI_TEAM_UPDATE_URL: url, AI_TEAM_UPDATE_TARGET: temporary } });
+    const result = await hashFile(temporary);
+    if (!result.bytes) throw new Error("系统下载通道返回了空文件");
+    fs.rmSync(targetPath, { force: true });
+    fs.renameSync(temporary, targetPath);
+    onProgress?.({ received: result.bytes, total: result.bytes, percent: 100, fallback: true });
+    return result;
+  } catch (error) {
+    fs.rmSync(temporary, { force: true });
+    throw error;
+  }
+}
+
 function findPackagedRoot(directory) {
   const queue = [{ directory, depth: 0 }];
   while (queue.length) {
@@ -104,7 +134,7 @@ function createInstallScript(scriptPath) {
   fs.writeFileSync(scriptPath, content, "utf8");
 }
 
-function createUpdateRuntime({ currentVersion, userDataPath, installPath, executablePath, fetchImpl = global.fetch } = {}) {
+function createUpdateRuntime({ currentVersion, userDataPath, installPath, executablePath, fetchImpl = global.fetch, fallbackDownloadImpl = downloadFileWithPowerShell } = {}) {
   if (!currentVersion || !userDataPath) throw new Error("更新运行时缺少版本或用户数据目录");
   const settingsPath = path.join(userDataPath, "update-settings.json");
   const statePath = path.join(userDataPath, "update-state.json");
@@ -114,6 +144,7 @@ function createUpdateRuntime({ currentVersion, userDataPath, installPath, execut
   let state = { status: "idle", latestVersion: currentVersion, releaseUrl: "", releaseNotes: "", progress: 0, downloaded: false, readyToInstall: false, error: "", checkedAt: null, ...persistedState, currentVersion };
   if (installedPendingVersion) state = { ...state, status: "idle", available: false, downloaded: false, readyToInstall: false, packageRoot: "", zipPath: "", progress: 0, error: "" };
   const listeners = new Set();
+  let activeDownload = null;
 
   function emit(patch) {
     state = { ...state, ...patch, currentVersion };
@@ -144,7 +175,7 @@ function createUpdateRuntime({ currentVersion, userDataPath, installPath, execut
       throw error;
     }
   }
-  async function download() {
+  async function performDownload() {
     if (!state.available || !state.asset?.url) await check();
     if (!state.available || !state.asset?.url) return status();
     const updateDirectory = path.join(userDataPath, "updates", state.latestVersion);
@@ -155,17 +186,35 @@ function createUpdateRuntime({ currentVersion, userDataPath, installPath, execut
     try {
       let lastProgress = -1;
       let lastProgressAt = 0;
-      const downloaded = await downloadFile(state.asset.url, zipPath, fetchImpl, ({ percent, received, total }) => {
+      const progress = ({ percent, received, total, fallback }) => {
         const now = Date.now();
         if (percent === lastProgress && now - lastProgressAt < 250) return;
         lastProgress = percent; lastProgressAt = now;
-        emit({ progress: percent, receivedBytes: received, totalBytes: total });
-      });
+        emit({ progress: percent, receivedBytes: received, totalBytes: total, downloadMethod: fallback ? "system" : "electron" });
+      };
+      let downloaded;
+      let primaryError;
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        try {
+          downloaded = await downloadFile(state.asset.url, zipPath, fetchImpl, progress);
+          break;
+        } catch (error) {
+          primaryError = error;
+          fs.rmSync(zipPath, { force: true });
+          fs.rmSync(`${zipPath}.part`, { force: true });
+          if (attempt < 2) emit({ status: "downloading", progress: 0, error: "", downloadAttempt: attempt + 1 });
+        }
+      }
+      if (!downloaded) {
+        emit({ status: "downloading", progress: 0, error: "", downloadMethod: "system" });
+        try { downloaded = await fallbackDownloadImpl(state.asset.url, zipPath, progress); }
+        catch (fallbackError) { throw new Error(`Electron 下载失败：${primaryError?.message || primaryError}；系统备用下载也失败：${fallbackError.message || fallbackError}`); }
+      }
       if (state.asset.size && downloaded.bytes !== Number(state.asset.size)) throw new Error("更新包大小与 GitHub Release 记录不一致");
       fs.rmSync(extractedPath, { recursive: true, force: true });
       fs.mkdirSync(extractedPath, { recursive: true });
       emit({ status: "extracting", progress: 100, sha256: downloaded.sha256 });
-      await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force", zipPath, extractedPath], { windowsHide: true, timeout: 5 * 60 * 1000 });
+      await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", "Expand-Archive -LiteralPath $env:AI_TEAM_UPDATE_ZIP -DestinationPath $env:AI_TEAM_UPDATE_PACKAGE -Force"], { windowsHide: true, timeout: 5 * 60 * 1000, env: { ...process.env, AI_TEAM_UPDATE_ZIP: zipPath, AI_TEAM_UPDATE_PACKAGE: extractedPath } });
       const packageRoot = findPackagedRoot(extractedPath);
       if (!packageRoot) throw new Error("更新包校验失败：未找到桌面程序和 app.asar");
       return emit({ status: "ready", downloaded: true, readyToInstall: true, packageRoot, zipPath, progress: 100, error: "" });
@@ -173,6 +222,11 @@ function createUpdateRuntime({ currentVersion, userDataPath, installPath, execut
       emit({ status: "error", error: error.message || String(error), readyToInstall: false });
       throw error;
     }
+  }
+  function download() {
+    if (activeDownload) return activeDownload;
+    activeDownload = performDownload().finally(() => { activeDownload = null; });
+    return activeDownload;
   }
   function installOnExit(processId = process.pid) {
     if (!state.readyToInstall || !state.packageRoot) throw new Error("当前没有等待安装的更新");
@@ -188,4 +242,4 @@ function createUpdateRuntime({ currentVersion, userDataPath, installPath, execut
   return { status, setSettings, check, download, installOnExit, onChange };
 }
 
-module.exports = { RELEASES_API, parseVersion, compareVersions, selectReleaseAsset, createUpdateRuntime };
+module.exports = { RELEASES_API, parseVersion, compareVersions, selectReleaseAsset, downloadFileWithPowerShell, createUpdateRuntime };

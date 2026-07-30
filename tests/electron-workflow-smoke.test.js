@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
+const expectedVersion = require(path.join(root, "package.json")).version;
 const electron = require("electron");
 const port = 9337;
 
@@ -161,7 +162,7 @@ async function main() {
     assert.equal(graphSurface.selected, 'app');
     assert.ok(graphSurface.scale > 0);
     const updaterStatus = await client.evaluate('window.desktop.getUpdateStatus()');
-    assert.equal(updaterStatus.currentVersion, '0.22.0');
+    assert.equal(updaterStatus.currentVersion, expectedVersion);
     const accessStatus = await client.evaluate('window.desktop.getComputerAccess()');
     assert.equal(accessStatus.enabled, false);
 
@@ -325,11 +326,32 @@ async function main() {
 
     await client.evaluate("document.querySelector('[data-workflow-mode=\"image\"]').click(); true");
     await delay(150);
-    const imageMode = await client.evaluate("({ mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length, width: currentWorkflow.template.width, height: currentWorkflow.template.height, ports: document.querySelectorAll('.media-port').length, parameters: !document.querySelector('#workflow-parameter-editor').hidden, library: !document.querySelector('#media-node-library').hidden, viewportHeight: document.querySelector('#workflow-viewport').getBoundingClientRect().height })");
+    const imageMode = await client.evaluate(`(() => {
+      const viewport = document.querySelector('#workflow-viewport').getBoundingClientRect();
+      const rects = [...document.querySelectorAll('.workflow-node.media')].map((node) => node.getBoundingClientRect());
+      const overlaps = rects.some((left,index) => rects.slice(index+1).some((right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top));
+      const visible = rects.every((rect) => rect.right >= viewport.left && rect.left <= viewport.right && rect.bottom >= viewport.top && rect.top <= viewport.bottom);
+      const outside = rects.map((rect,index) => ({ id:currentWorkflow.nodes[index]?.id,left:Math.round(rect.left),right:Math.round(rect.right),top:Math.round(rect.top),bottom:Math.round(rect.bottom) })).filter((rect) => rect.right < viewport.left || rect.left > viewport.right || rect.bottom < viewport.top || rect.top > viewport.bottom);
+      return { mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length, width: currentWorkflow.template.width, height: currentWorkflow.template.height, ports: document.querySelectorAll('.media-port').length, libraryHidden: document.querySelector('#media-node-library').hidden, inspectorHidden: document.querySelector('#workflow-inspector').hidden, viewportHeight: viewport.height, windowHeight: innerHeight, viewport:{left:Math.round(viewport.left),right:Math.round(viewport.right),top:Math.round(viewport.top),bottom:Math.round(viewport.bottom)}, scale:workflowScale,transform:getComputedStyle(document.querySelector('#workflow-canvas')).transform,scrollLeft:document.querySelector('#workflow-viewport').scrollLeft,fullScreen: document.body.classList.contains('media-workflow-active'), sidebarHidden: getComputedStyle(document.querySelector('.sidebar')).display === 'none', overlaps, visible, outside };
+    })()`);
     assert.equal(imageMode.mode, "image");
     assert.ok(imageMode.manager && imageMode.edges > 0);
     assert.equal(imageMode.width, 3400); assert.equal(imageMode.height, 2100);
-    assert.ok(imageMode.ports > 10 && imageMode.library && imageMode.viewportHeight >= 650);
+    assert.ok(imageMode.ports > 10 && imageMode.libraryHidden && imageMode.inspectorHidden);
+    assert.ok(imageMode.fullScreen && imageMode.sidebarHidden && imageMode.viewportHeight >= imageMode.windowHeight - 150, JSON.stringify(imageMode));
+    assert.equal(imageMode.overlaps, false);
+    assert.equal(imageMode.visible, true, JSON.stringify(imageMode));
+    const drawers = await client.evaluate(`(() => {
+      document.querySelector('#media-library-toggle').click();
+      const libraryOpen = !document.querySelector('#media-node-library').hidden;
+      document.querySelector('#workflow-inspector-toggle').click();
+      const settingsOpen = !document.querySelector('#workflow-inspector').hidden && document.querySelector('#workflow-inspector').classList.contains('show-parameters');
+      document.querySelector('#workflow-chat-toggle').click();
+      const chatOpen = !document.querySelector('#workflow-inspector').hidden && document.querySelector('#workflow-inspector').classList.contains('show-chat');
+      document.querySelector('#workflow-chat-close').click();
+      return { libraryOpen, settingsOpen, chatOpen, closed: document.querySelector('#workflow-inspector').hidden };
+    })()`);
+    assert.deepEqual(drawers, { libraryOpen: true, settingsOpen: true, chatOpen: true, closed: true });
     await client.evaluate("window.AppI18n.setLanguage('en-US'); location.reload(); true");
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await delay(100);

@@ -256,7 +256,36 @@
     ["配音与字幕", "Voiceover and subtitles"], ["可选配音、字幕和音轨合成", "Optional voiceover, subtitles, and audio mix"], ["生成字幕", "Generate subtitles"], ["生成配音", "Generate voiceover"],
     ["导出视频", "Export video"], ["编码并保存到 Agent 产物目录", "Encode and save to the agent output folder"], ["容器", "Container"], ["编码", "Codec"],
     ["未设置", "Not set"], ["低质量，模糊，变形，错误文字", "low quality, blurry, deformed, incorrect text"], ["闪烁，抖动，变形，低质量", "flicker, shake, deformation, low quality"],
-    ["该节点没有启用技能", "No skills are enabled for this node"], ["语音配置已安全恢复，录音和朗读可以直接使用。", "Voice settings were restored securely. Recording and speech are ready to use."]
+    ["该节点没有启用技能", "No skills are enabled for this node"], ["语音配置已安全恢复，录音和朗读可以直接使用。", "Voice settings were restored securely. Recording and speech are ready to use."],
+    ["＋ 添加步骤", "+ Add step"], ["⚙ 调整步骤", "Adjust step"], ["◌ AI 对话", "AI Chat"],
+    ["添加生成步骤", "Add generation step"], ["选择后会放到画布中", "Select a step to place it on the canvas"],
+    ["步骤设置", "Step settings"], ["选择流程步骤", "Select a workflow step"], ["添加生图步骤", "Add image step"], ["添加视频步骤", "Add video step"],
+    ["图片生成流程", "Image generation workflow"], ["按步骤描述画面、调节质量并保存图片", "Describe the image, adjust quality, and save it step by step"],
+    ["视频生成流程", "Video generation workflow"], ["按步骤描述内容、设置镜头并保存视频", "Describe the content, set the camera, and save the video step by step"],
+    ["选模型", "MODEL"], ["想画", "DESCRIBE"], ["想拍", "DESCRIBE"], ["不要", "EXCLUDE"], ["尺寸", "SIZE"], ["质量", "QUALITY"],
+    ["成图", "CREATE"], ["成片", "CREATE"], ["清晰", "ENHANCE"], ["保存", "SAVE"], ["查看", "VIEW"], ["开始", "START"], ["参考图", "REFERENCE"], ["镜头", "CAMERA"], ["流畅", "SMOOTH"], ["声音", "AUDIO"],
+    ["模型", "Model"], ["文字理解", "Text input"], ["成图工具", "Image tool"], ["画面描述", "Image description"], ["想要内容", "Wanted content"], ["排除内容", "Excluded content"],
+    ["画面底稿", "Image draft"], ["生成画面", "Generated image"], ["图片", "Image"], ["文件", "File"], ["完成", "Done"], ["镜头设置", "Camera settings"], ["视频底稿", "Video draft"], ["视频画面", "Video frames"], ["声音字幕", "Audio and subtitles"],
+    ["选择绘图模型", "Choose image model"], ["使用设置中保存的图片生成模型", "Use the image model saved in Settings"], ["风格理解层级", "Style interpretation level"],
+    ["想画什么", "What to draw"], ["写清主体、场景、光线和画面风格", "Describe the subject, scene, lighting, and visual style"],
+    ["不想出现什么", "What to avoid"], ["写下需要避开的瑕疵和多余元素", "List defects and unwanted elements to avoid"], ["需要排除的内容", "Content to exclude"],
+    ["图片尺寸", "Image size"], ["设置宽度、高度和一次生成几张", "Set width, height, and image count"], ["生成数量", "Image count"],
+    ["生成质量", "Generation quality"], ["调节精细程度、描述贴合度和随机变化", "Adjust detail, prompt accuracy, and variation"],
+    ["随机编号（-1 为每次随机）", "Random number (-1 changes every time)"], ["精细程度", "Detail level"], ["描述贴合度", "Prompt accuracy"], ["绘制方式", "Drawing style"], ["细节安排", "Detail processing"],
+    ["均衡", "Balanced"], ["变化丰富", "More variation"], ["细节优先", "Detail first"], ["速度优先", "Speed first"], ["默认", "Default"], ["细节增强", "Enhanced detail"], ["快速成形", "Faster result"], ["画面稳定", "Stable image"],
+    ["生成图片", "Create image"], ["把模型生成的画面底稿变成图片", "Turn the model draft into an image"], ["清晰度增强", "Enhance clarity"], ["放大图片并补充画面细节", "Enlarge the image and improve details"],
+    ["清晰放大", "Clarity scale"], ["放大方式", "Upscaling style"], ["清晰优先", "Sharp"], ["自然柔和", "Natural"], ["像素画", "Pixel art"],
+    ["保存到文件夹", "Save to folder"], ["保存到你选择的 Agent 产物目录", "Save to the selected agent output folder"], ["查看结果", "View result"], ["显示最近一次真实生成的图片", "Show the latest generated image"],
+    ["开始生成", "Start generation"], ["检查设置后提交真实图片生成请求", "Check settings and submit the image request"], ["检查设置后提交真实视频生成请求", "Check settings and submit the video request"],
+    ["选择视频模型", "Choose video model"], ["使用设置中保存的视频生成模型", "Use the video model saved in Settings"], ["想生成什么视频", "What video to create"],
+    ["描述人物动作、场景、镜头和画面风格", "Describe movement, scene, camera, and visual style"], ["视频内容描述", "Video description"],
+    ["写下需要避免的闪烁、变形和多余内容", "List flicker, deformation, and unwanted content to avoid"], ["上传参考图片", "Upload reference image"], ["可选，用一张图片作为视频开头", "Optional image used as the opening frame"], ["参考图片位置", "Reference image location"],
+    ["视频时长和镜头", "Duration and camera"], ["设置时长、横竖屏、动作幅度和流畅度", "Set duration, orientation, motion, and smoothness"], ["画面比例", "Aspect ratio"], ["动作幅度", "Motion amount"], ["每秒画面数", "Frames per second"],
+    ["调节精细程度、内容贴合度和随机变化", "Adjust detail, content accuracy, and variation"], ["内容贴合度", "Content accuracy"], ["生成视频画面", "Create video frames"], ["把模型结果变成连续的视频画面", "Turn model output into continuous video frames"],
+    ["画面流畅度", "Video smoothness"], ["减少闪烁和卡顿，让动作更顺滑", "Reduce flicker and stutter for smoother motion"], ["流畅倍数", "Smoothness multiplier"], ["减少画面抖动", "Reduce camera shake"],
+    ["添加声音和字幕", "Add audio and subtitles"], ["按需加入配音、字幕和背景声音", "Optionally add voiceover, subtitles, and background audio"],
+    ["保存视频", "Save video"], ["生成视频文件并保存到 Agent 产物目录", "Create the video file and save it to the agent output folder"], ["文件格式", "File format"], ["清晰度与兼容方式", "Quality and compatibility"], ["兼容优先", "Most compatible"], ["体积更小", "Smaller file"], ["网页播放", "Web playback"]
+    ,["常规下载受阻，已切换 Windows 系统下载", "The regular download was blocked; switched to Windows system download"]
   ]);
 
   const patterns = [

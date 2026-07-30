@@ -65,6 +65,9 @@
             <div class="workflow-toolbar">
               <label class="workflow-task-picker">当前任务<select id="workflow-task-select"><option value="">等待创建任务</option></select></label>
               <button class="secondary-button" id="workflow-add-node" type="button">＋ 添加节点</button>
+              <button class="secondary-button media-toolbar-button" id="media-library-toggle" type="button" hidden>＋ 添加步骤</button>
+              <button class="secondary-button media-toolbar-button" id="workflow-inspector-toggle" type="button" hidden>⚙ 调整步骤</button>
+              <button class="secondary-button media-toolbar-button" id="workflow-chat-toggle" type="button" hidden>◌ AI 对话</button>
               <button class="secondary-button" id="workflow-connect" type="button">⌁ 自定义连线</button>
               <button class="secondary-button" id="workflow-models" type="button">◉ 配置模型</button>
               <div class="workflow-zoom" role="group" aria-label="画布缩放">
@@ -85,7 +88,7 @@
           <section class="workflow-layout">
             <section class="workflow-canvas-panel">
               <header class="workflow-layers"><span id="workflow-template-label">软件研发</span><b id="workflow-canvas-hint">拖动节点调整布局 · 右键编辑 · 可自定义连线</b></header>
-              <aside class="media-node-library" id="media-node-library" hidden><header><strong id="media-node-library-title">媒体节点</strong><small>拖拽编排 · 端口连线</small></header><div id="media-node-library-list"></div></aside>
+              <aside class="media-node-library" id="media-node-library" hidden><header><div><strong id="media-node-library-title">添加生成步骤</strong><small>选择后会放到画布中</small></div><button class="icon-button media-drawer-close" id="media-library-close" type="button" title="关闭" aria-label="关闭">×</button></header><div id="media-node-library-list"></div></aside>
               <div class="workflow-viewport" id="workflow-viewport">
                 <div class="workflow-canvas" id="workflow-canvas">
                   <svg id="workflow-links" width="1500" height="1120" viewBox="0 0 1500 1120" aria-hidden="true"></svg>
@@ -95,9 +98,10 @@
               <section class="media-workflow-result" id="media-workflow-result" hidden><div><strong>生成结果</strong><span id="media-result-state">等待执行媒体工作流</span><code id="media-result-path"></code></div><img id="media-result-preview" alt="图像生成预览" hidden /><button class="secondary-button" id="media-result-open" type="button" hidden>打开产物</button></section>
               <footer class="workflow-legend"><span><i class="done"></i>已完成</span><span><i class="active"></i>执行中</span><span><i class="queued"></i>等待</span><span><i class="failed"></i>阻断</span><b>节点和连线来自当前任务的真实执行记录</b></footer>
             </section>
-            <aside class="workflow-inspector">
+            <div class="workflow-drawer-backdrop" id="workflow-drawer-backdrop" hidden></div>
+            <aside class="workflow-inspector" id="workflow-inspector">
               <div class="workflow-inspector-scroll">
-                <header><p class="eyebrow">节点配置</p><h2 id="workflow-inspector-title">选择流程节点</h2><span id="workflow-inspector-state">等待选择</span></header>
+                <header><div><p class="eyebrow">步骤设置</p><h2 id="workflow-inspector-title">选择流程步骤</h2></div><span id="workflow-inspector-state">等待选择</span><button class="icon-button media-drawer-close" id="workflow-inspector-close" type="button" title="关闭" aria-label="关闭">×</button></header>
                 <p id="workflow-inspector-detail">点击画布中的节点查看详情，拖动节点可自由编排。</p>
                 <section class="workflow-progress-editor"><h3>节点进度 <b id="workflow-node-progress-label">0%</b></h3><input id="workflow-node-progress" type="range" min="0" max="100" step="1" value="0" /></section>
                 <section><h3>执行模型</h3><select id="workflow-node-model"><option value="">跟随主模型</option></select></section>
@@ -107,7 +111,7 @@
                 <section><h3>连线管理</h3><div class="workflow-edge-list" id="workflow-edge-list"><span>暂无自定义连线</span></div></section>
               </div>
               <section class="workflow-ai-chat">
-                <header><div><p class="eyebrow">AI 对话</p><h3 id="workflow-chat-target">灵灵 · 团队总控</h3></div><button class="computer-access-button compact" data-computer-access type="button" aria-pressed="false" title="临时授予读取文件、网页和操作电脑的权限"><i></i><span>完全访问：关闭</span></button><button class="icon-button voice-stop-button" data-stop-voice type="button" title="停止朗读" aria-label="停止朗读" hidden>■</button><button class="icon-button" id="workflow-clear-chat" type="button" title="清空对话">×</button></header>
+                <header><div><p class="eyebrow">AI 对话</p><h3 id="workflow-chat-target">灵灵 · 团队总控</h3></div><button class="computer-access-button compact" data-computer-access type="button" aria-pressed="false" title="临时授予读取文件、网页和操作电脑的权限"><i></i><span>完全访问：关闭</span></button><button class="icon-button voice-stop-button" data-stop-voice type="button" title="停止朗读" aria-label="停止朗读" hidden>■</button><button class="icon-button" id="workflow-clear-chat" type="button" title="清空对话">×</button><button class="icon-button media-drawer-close" id="workflow-chat-close" type="button" title="关闭" aria-label="关闭">×</button></header>
                 <div class="workflow-chat-messages" id="workflow-chat-messages"><article class="assistant">使用 @ 指定经理或 Agent，使用 / 调用 Skill。</article></div>
                 <div class="workflow-chat-candidates" id="workflow-chat-candidates" hidden></div>
                 <form id="workflow-chat-form"><textarea id="workflow-chat-input" maxlength="4000" placeholder="@前端 Agent /界面实现 完成登录页…" required></textarea><button class="icon-button voice-record-button" id="workflow-voice-button" type="button" title="开始录音" aria-label="开始录音">●</button><button class="primary-button" type="submit">发送</button></form>
