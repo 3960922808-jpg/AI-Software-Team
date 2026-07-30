@@ -230,11 +230,18 @@ async function testProfile(profileId) {
   }
 }
 
+function formatMemoryGraph(memoryGraph, limit = 12000) {
+  if (!memoryGraph?.rootPath || !Array.isArray(memoryGraph.files)) return "";
+  const lines = [`长期记忆知识图谱：${memoryGraph.rootPath}`, `图谱统计：${JSON.stringify(memoryGraph.stats || {})}`];
+  for (const file of memoryGraph.files) lines.push(`- ${file.path}｜关键词：${(file.keywords || []).join("、")}｜摘要：${file.summary || ""}`);
+  return lines.join("\n").slice(0, limit);
+}
+
 async function executeTask(payload) {
   const task = payload?.task || {};
   if (!task.id) task.id = `task-${Date.now()}`;
   const fallbackAgent = agentRoles[task.agent] ? task.agent : "技术主管 Agent";
-  const context = (payload.context || []).slice(0, 10).join("\n").slice(0, 24000);
+  const context = `${(payload.context || []).slice(0, 10).join("\n")}\n${formatMemoryGraph(payload.memoryGraph)}`.slice(0, 24000);
   const available = Object.keys(agentRoles).filter((agent) => payload.skills?.[agent]?.length).join("、") || Object.keys(agentRoles).join("、");
   const plugins = (Array.isArray(payload.plugins) ? payload.plugins : []).slice(0, 20);
   const pluginSummary = plugins.map((plugin) => `${plugin.name}：${plugin.skills.join("、")}`).join("；").slice(0, 8000);
@@ -281,7 +288,7 @@ async function chat(payload) {
   const target = Object.hasOwn(agentRoles, requestedTarget) ? requestedTarget : "commander";
   const assistantName = target === "commander" ? "灵灵" : target;
   const history = (payload.messages || []).slice(-12).map((message) => `${message.role === "user" ? "用户" : assistantName}：${message.content}`).join("\n").slice(0, 24000);
-  const context = (payload.context || []).slice(0, 10).join("\n").slice(0, 16000);
+  const context = `${(payload.context || []).slice(0, 10).join("\n")}\n${formatMemoryGraph(payload.memoryGraph, 8000)}`.slice(0, 16000);
   const plugins = (Array.isArray(payload.plugins) ? payload.plugins : []).slice(0, 20).map((plugin) => `${plugin.name}：${plugin.skills.join("、")}`).join("；").slice(0, 6000);
   const invokedSkills = (Array.isArray(payload.invokedSkills) ? payload.invokedSkills : []).slice(0, 12).map((skill) => String(skill).slice(0, 80)).join("、");
   if (target !== "commander") {

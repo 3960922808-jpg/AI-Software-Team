@@ -102,6 +102,9 @@ let modelPoolState = { profiles: [], assignments: {} };
 let mediaModelState = { image: { configured: false }, video: { configured: false } };
 let sandboxPolicy = null;
 let pluginState = [];
+let memoryGraphState = { rootPath: "", stats: { nodes: 0, edges: 0 }, nodes: [], edges: [] };
+let memoryGraphScene = { positions: new Map(), nodes: [], edges: [], scale: 1, offsetX: 0, offsetY: 0, dragging: null, selectedId: null, frame: 0 };
+let updateState = { status: "idle", currentVersion: "", latestVersion: "", progress: 0, settings: { autoCheck: true, autoDownload: true, installOnRestart: true } };
 let interfaceMode = loadJson(storageKeys.interfaceMode, "studio") === "workflow" ? "workflow" : "studio";
 let lastStudioView = "projects";
 let workflowScale = 1;
@@ -516,7 +519,7 @@ function workflowMentionCatalog() {
 }
 
 function workflowSkillCatalog() {
-  const builtIn = skillCatalog.flatMap(([, agent, skills]) => skills.map(([name]) => ({ label: name, detail: agent })));
+  const builtIn = skillCatalog.flatMap(([, agent, skills]) => skills.filter(([, description]) => enabledSkills.has(description)).map(([name]) => ({ label: name, detail: agent })));
   const plugins = pluginState.filter((plugin) => plugin.enabled).flatMap((plugin) => (plugin.skills || []).map((name) => ({ label: name, detail: plugin.name })));
   return [...builtIn, ...plugins].filter((item, index, list) => list.findIndex((candidate) => candidate.label === item.label) === index);
 }
@@ -526,6 +529,19 @@ function parseWorkflowChatCommand(content) {
   const mention = mentions.find((item) => content.includes(`@${item.label}`));
   const invokedSkills = workflowSkillCatalog().filter((item) => content.includes(`/${item.label}`)).map((item) => item.label);
   return { targetAgent: mention?.target || "commander", targetLabel: mention?.label || "灵灵", invokedSkills };
+}
+
+function renderChatCandidates() {
+  const input = document.querySelector("#chat-input");
+  const popup = document.querySelector("#chat-candidates");
+  const beforeCursor = input.value.slice(0, input.selectionStart);
+  const token = beforeCursor.match(/(^|\s)([@/])([^\s@/]*)$/);
+  if (!token) { popup.hidden = true; return; }
+  const isMention = token[2] === "@";
+  const query = token[3].toLowerCase();
+  const items = (isMention ? workflowMentionCatalog() : workflowSkillCatalog()).filter((item) => item.label.toLowerCase().includes(query)).slice(0, 8);
+  popup.innerHTML = items.map((item) => `<button type="button" data-chat-token="${isMention ? "@" : "/"}${escapeHtml(item.label)}"><b>${isMention ? "@" : "/"}${escapeHtml(item.label)}</b><small>${escapeHtml(item.detail)}</small></button>`).join("");
+  popup.hidden = !items.length;
 }
 
 function renderWorkflowChat() {
@@ -699,10 +715,10 @@ function renderExternalResources() {
   document.querySelector("#external-resources").innerHTML = externalResources.length ? externalResources.map((resource) => {
     if (resource.type === "repository") {
       const data = resource.data;
-      return `<article class="external-resource"><header><span class="resource-type">代码仓库</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.name)}</h3><p>${escapeHtml(data.description || "未填写仓库说明")}</p><dl><div><dt>默认分支</dt><dd>${escapeHtml(data.defaultBranch)}</dd></div><div><dt>主要语言</dt><dd>${escapeHtml(data.language)}</dd></div><div><dt>文件路径</dt><dd>${data.files.length}</dd></div></dl><small>${data.truncated ? "文件列表已截断" : "文件列表完整"}</small></article>`;
+      return `<article class="external-resource"><header><span class="resource-type">代码仓库</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.name)}</h3><p>${escapeHtml(data.description || "未填写仓库说明")}</p><dl><div><dt>读取分支</dt><dd>${escapeHtml(data.selectedBranch || data.defaultBranch)}</dd></div><div><dt>主要语言</dt><dd>${escapeHtml(data.language)}</dd></div><div><dt>文件路径</dt><dd>${data.files.length}</dd></div></dl><button class="resource-open-button" type="button" data-open-resource="${escapeHtml(data.url)}">打开 GitHub 仓库</button><small>${data.truncated ? "文件列表已截断" : "文件列表完整"}</small></article>`;
     }
     const data = resource.data;
-    return `<article class="external-resource"><header><span class="resource-type">网页资料</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.title)}</h3><p>${escapeHtml(data.content.slice(0, 220))}${data.content.length > 220 ? "…" : ""}</p><a href="${escapeHtml(data.url)}" target="_blank" rel="noreferrer">${escapeHtml(data.url)}</a><small>${data.content.length.toLocaleString(uiLocale())} 个字符</small></article>`;
+    return `<article class="external-resource"><header><span class="resource-type">网页资料</span><button type="button" data-delete-resource="${resource.id}" title="移除资源">×</button></header><h3>${escapeHtml(data.title)}</h3><p>${escapeHtml(data.content.slice(0, 220))}${data.content.length > 220 ? "…" : ""}</p><button class="resource-open-button" type="button" data-open-resource="${escapeHtml(data.url)}">打开原始资料</button><small>${data.content.length.toLocaleString(uiLocale())} 个字符</small></article>`;
   }).join("") : '<p class="empty-state">连接代码仓库或读取公开资料后，资源会显示在这里</p>';
 }
 
@@ -842,6 +858,166 @@ function setMediaModelFeedback(kind, message, type = "") {
   feedback.textContent = message;
   feedback.className = `model-save-feedback ${type}`.trim();
 }
+
+function memoryNodeColor(node) {
+  if (node.type === "root") return "#111111";
+  if (node.type === "directory") return "#176b63";
+  if (node.type === "concept") return "#7a6fa5";
+  const colors = { ".js": "#d0a820", ".ts": "#3578b9", ".py": "#4b7c58", ".md": "#555555", ".json": "#a35e31", ".html": "#c94d3f", ".css": "#4c69b3" };
+  return colors[node.extension] || "#777777";
+}
+
+function seededValue(value) {
+  let hash = 2166136261;
+  for (const character of String(value)) { hash ^= character.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return (hash >>> 0) / 4294967295;
+}
+
+function buildMemoryGraphScene() {
+  const filter = document.querySelector("#memory-graph-filter")?.value || "all";
+  let nodes = memoryGraphState.nodes || [];
+  if (filter !== "all") nodes = nodes.filter((node) => node.type === filter || node.type === "root");
+  if (nodes.length > 360) {
+    const root = nodes.filter((node) => node.type === "root");
+    const directories = nodes.filter((node) => node.type === "directory").slice(0, 80);
+    const concepts = nodes.filter((node) => node.type === "concept").sort((a, b) => (b.weight || 0) - (a.weight || 0)).slice(0, 80);
+    const files = nodes.filter((node) => node.type === "file").slice(0, Math.max(0, 360 - root.length - directories.length - concepts.length));
+    nodes = [...root, ...directories, ...concepts, ...files];
+  }
+  const ids = new Set(nodes.map((node) => node.id));
+  memoryGraphScene.nodes = nodes;
+  memoryGraphScene.edges = (memoryGraphState.edges || []).filter((edge) => ids.has(edge.from) && ids.has(edge.to));
+  memoryGraphScene.positions = new Map();
+  nodes.forEach((node, index) => {
+    const angle = seededValue(node.id) * Math.PI * 2;
+    const jitter = seededValue(`${node.id}:radius`);
+    const radius = node.type === "root" ? 0 : node.type === "directory" ? 80 + jitter * 110 : node.type === "concept" ? 150 + jitter * 180 : 230 + jitter * 280;
+    memoryGraphScene.positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius * .72, vx: 0, vy: 0, fixed: false, index });
+  });
+  memoryGraphScene.scale = 1;
+  memoryGraphScene.offsetX = 0;
+  memoryGraphScene.offsetY = 0;
+  memoryGraphScene.frame = 0;
+  runMemoryGraphLayout();
+}
+
+function runMemoryGraphLayout() {
+  cancelAnimationFrame(memoryGraphScene.animationFrame);
+  const step = () => {
+    const positions = memoryGraphScene.positions;
+    for (const edge of memoryGraphScene.edges) {
+      const a = positions.get(edge.from); const b = positions.get(edge.to);
+      if (!a || !b) continue;
+      const dx = b.x - a.x; const dy = b.y - a.y; const distance = Math.max(1, Math.hypot(dx, dy));
+      const target = edge.type === "contains" ? 100 : edge.type === "references" ? 145 : 175;
+      const force = (distance - target) * .0018;
+      if (!a.fixed) { a.vx += dx / distance * force; a.vy += dy / distance * force; }
+      if (!b.fixed) { b.vx -= dx / distance * force; b.vy -= dy / distance * force; }
+    }
+    const nodes = memoryGraphScene.nodes;
+    for (let i = 0; i < nodes.length; i += 1) {
+      const a = positions.get(nodes[i].id);
+      if (!a || a.fixed) continue;
+      a.vx += -a.x * .00018; a.vy += -a.y * .00018;
+      for (let j = i + 1; j < nodes.length; j += 1) {
+        const b = positions.get(nodes[j].id); if (!b) continue;
+        const dx = b.x - a.x; const dy = b.y - a.y; const square = Math.max(64, dx * dx + dy * dy);
+        if (square > 14400) continue;
+        const force = 22 / square;
+        a.vx -= dx * force; a.vy -= dy * force;
+        if (!b.fixed) { b.vx += dx * force; b.vy += dy * force; }
+      }
+      a.vx *= .82; a.vy *= .82; a.x += a.vx; a.y += a.vy;
+    }
+    memoryGraphScene.frame += 1;
+    drawMemoryGraph();
+    if (memoryGraphScene.frame < 100) memoryGraphScene.animationFrame = requestAnimationFrame(step);
+  };
+  memoryGraphScene.animationFrame = requestAnimationFrame(step);
+}
+
+function drawMemoryGraph() {
+  const canvas = document.querySelector("#memory-graph-canvas");
+  if (!canvas) return;
+  const bounds = canvas.getBoundingClientRect();
+  const ratio = Math.min(2, window.devicePixelRatio || 1);
+  const width = Math.max(1, Math.round(bounds.width)); const height = Math.max(1, Math.round(bounds.height));
+  if (canvas.width !== width * ratio || canvas.height !== height * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; }
+  const context = canvas.getContext("2d");
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  context.clearRect(0, 0, width, height);
+  const { scale, offsetX, offsetY, positions } = memoryGraphScene;
+  const centerX = width / 2 + offsetX; const centerY = height / 2 + offsetY;
+  const search = (document.querySelector("#memory-graph-search")?.value || "").trim().toLowerCase();
+  const matching = new Set(memoryGraphScene.nodes.filter((node) => !search || `${node.label} ${node.path} ${(node.keywords || []).join(" ")}`.toLowerCase().includes(search)).map((node) => node.id));
+  context.lineWidth = 1;
+  for (const edge of memoryGraphScene.edges) {
+    const from = positions.get(edge.from); const to = positions.get(edge.to); if (!from || !to) continue;
+    context.beginPath(); context.moveTo(centerX + from.x * scale, centerY + from.y * scale); context.lineTo(centerX + to.x * scale, centerY + to.y * scale);
+    context.strokeStyle = search && !(matching.has(edge.from) || matching.has(edge.to)) ? "rgba(0,0,0,.035)" : edge.type === "references" ? "rgba(23,107,99,.34)" : edge.type === "related" ? "rgba(122,111,165,.22)" : "rgba(0,0,0,.12)";
+    context.stroke();
+  }
+  for (const node of memoryGraphScene.nodes) {
+    const position = positions.get(node.id); if (!position) continue;
+    const x = centerX + position.x * scale; const y = centerY + position.y * scale;
+    const radius = (node.type === "root" ? 11 : node.type === "directory" ? 7 : node.type === "concept" ? 5 : 4) * Math.min(1.25, Math.max(.75, scale));
+    const muted = search && !matching.has(node.id);
+    context.globalAlpha = muted ? .12 : 1;
+    context.beginPath(); context.arc(x, y, radius + (memoryGraphScene.selectedId === node.id ? 4 : 0), 0, Math.PI * 2);
+    if (memoryGraphScene.selectedId === node.id) { context.fillStyle = "rgba(23,107,99,.18)"; context.fill(); context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); }
+    context.fillStyle = memoryNodeColor(node); context.fill();
+    if (scale > .7 && (node.type !== "file" || matching.has(node.id) || memoryGraphScene.nodes.length < 150)) {
+      context.font = `${node.type === "root" ? 11 : 9}px system-ui`; context.fillStyle = "#222"; context.textAlign = "center"; context.fillText(node.label.slice(0, 24), x, y + radius + 12);
+    }
+    context.globalAlpha = 1;
+  }
+}
+
+function renderMemoryGraph() {
+  const stats = memoryGraphState.stats || {};
+  document.querySelector("#memory-graph-summary").textContent = memoryGraphState.rootPath ? `${stats.nodes || 0} 个节点 · ${stats.edges || 0} 条连接` : "尚未建立图谱";
+  document.querySelector("#memory-graph-path").textContent = memoryGraphState.rootPath || "选择一个文件夹，将代码与资料转为互相关联的长期记忆。";
+  document.querySelector("#memory-graph-empty").hidden = Boolean(memoryGraphState.nodes?.length);
+  document.querySelector("#memory-graph-open").disabled = !memoryGraphState.rootPath;
+  document.querySelector("#memory-graph-reindex").disabled = !memoryGraphState.rootPath;
+  buildMemoryGraphScene();
+}
+
+function setMemoryGraphLoading(visible, title = "正在构建长期记忆") {
+  const layer = document.querySelector("#memory-graph-loading");
+  layer.hidden = !visible;
+  document.querySelector("#memory-graph-loading-title").textContent = title;
+  if (!visible) { clearInterval(memoryGraphScene.loadingTimer); return; }
+  let progress = 8;
+  document.querySelector("#memory-graph-loading-fill").style.width = `${progress}%`;
+  memoryGraphScene.loadingTimer = setInterval(() => { progress = Math.min(88, progress + Math.max(1, Math.round((90 - progress) / 7))); document.querySelector("#memory-graph-loading-fill").style.width = `${progress}%`; }, 180);
+}
+
+async function loadMemoryGraph() {
+  try { memoryGraphState = await window.desktop?.getMemoryGraph?.() || memoryGraphState; renderMemoryGraph(); }
+  catch (error) { document.querySelector("#memory-graph-path").textContent = `图谱加载失败：${error.message}`; }
+}
+
+async function chooseOrReindexMemoryGraph(choose) {
+  setMemoryGraphLoading(true, choose ? "正在构建长期记忆" : "正在重新索引知识关系");
+  try {
+    const result = choose ? await window.desktop.chooseMemoryGraphFolder() : { graph: await window.desktop.reindexMemoryGraph() };
+    if (!result.canceled) { memoryGraphState = result.graph; document.querySelector("#memory-graph-loading-fill").style.width = "100%"; renderMemoryGraph(); }
+  } catch (error) { document.querySelector("#memory-graph-path").textContent = `索引失败：${error.message}`; }
+  finally { setTimeout(() => setMemoryGraphLoading(false), 260); }
+}
+
+function showMemoryNode(node) {
+  if (!node) return;
+  memoryGraphScene.selectedId = node.id;
+  document.querySelector("#memory-node-type").textContent = node.type.toUpperCase();
+  document.querySelector("#memory-node-title").textContent = node.label;
+  document.querySelector("#memory-node-path").textContent = node.path || memoryGraphState.rootPath;
+  document.querySelector("#memory-node-summary").textContent = node.summary || (node.type === "concept" ? `由 ${node.weight || 0} 个文件共享的概念。` : "目录关系节点");
+  document.querySelector("#memory-node-keywords").innerHTML = (node.keywords || []).map((keyword) => `<span>${escapeHtml(keyword)}</span>`).join("");
+  document.querySelector("#memory-node-inspector").hidden = false;
+  drawMemoryGraph();
+}
 function applyMediaProviderDefaults(kind) {
   const form = mediaForm(kind);
   const defaults = mediaProviderDefaults[kind]?.[form.provider.value] || { baseUrl: "", model: "" };
@@ -948,6 +1124,36 @@ function renderModelPool() {
     </label>`).join("");
   document.querySelectorAll("[data-model-target]").forEach((select) => { select.value = assignments[select.dataset.modelTarget] || ""; });
   renderSettingsAgentRouting();
+}
+
+function renderUpdateState(nextState = updateState) {
+  updateState = nextState || updateState;
+  const stateLabels = { idle: "等待检查", checking: "正在检查", available: "发现新版本", "up-to-date": "已是最新版本", downloading: "正在下载", extracting: "正在校验", ready: "等待重启", installing: "正在安装", error: "更新失败" };
+  document.querySelector("#update-state").textContent = stateLabels[updateState.status] || updateState.status;
+  document.querySelector("#update-state").classList.toggle("connected", ["up-to-date", "ready"].includes(updateState.status));
+  document.querySelector("#update-current-version").textContent = `v${updateState.currentVersion || "--"}`;
+  document.querySelector("#update-latest-version").textContent = updateState.checkedAt ? `最新版本 v${updateState.latestVersion}` : "尚未检查最新版本";
+  document.querySelector("#update-auto-check").checked = updateState.settings?.autoCheck !== false;
+  document.querySelector("#update-auto-download").checked = updateState.settings?.autoDownload !== false;
+  document.querySelector("#update-install-restart").checked = updateState.settings?.installOnRestart !== false;
+  document.querySelector("#update-release-button").hidden = !updateState.releaseUrl;
+  document.querySelector("#update-download-button").hidden = !updateState.available || updateState.downloaded || ["downloading", "extracting"].includes(updateState.status);
+  document.querySelector("#update-restart-button").hidden = !updateState.readyToInstall;
+  const progressVisible = ["downloading", "extracting", "ready"].includes(updateState.status);
+  document.querySelector("#update-progress").hidden = !progressVisible;
+  const progress = Number(updateState.progress || 0);
+  document.querySelector("#update-progress-bar").value = progress;
+  document.querySelector("#update-progress-percent").textContent = `${progress}%`;
+  document.querySelector("#update-progress-label").textContent = updateState.status === "extracting" ? "正在解压并校验更新包" : updateState.status === "ready" ? "更新已下载，重启后覆盖旧版本" : "正在从 GitHub Releases 下载";
+  const messages = { idle: "软件会从 GitHub Releases 安全检查 Windows ZIP 新版本。", checking: "正在连接 GitHub Releases…", available: `v${updateState.latestVersion} 可以下载。`, "up-to-date": "当前已是最新版本。", downloading: "更新正在后台下载，您可以继续使用软件。", extracting: "下载完成，正在验证桌面程序结构。", ready: "更新已准备好。立即重启，或在下次退出时自动安装。", installing: "软件即将退出并覆盖安装新版本。" };
+  const feedback = document.querySelector("#update-feedback");
+  feedback.textContent = updateState.error ? `更新失败：${updateState.error}` : messages[updateState.status] || messages.idle;
+  feedback.className = `model-save-feedback ${updateState.error ? "error" : ["up-to-date", "ready"].includes(updateState.status) ? "success" : ""}`.trim();
+}
+
+async function loadUpdateState() {
+  try { renderUpdateState(await window.desktop?.getUpdateStatus?.() || updateState); }
+  catch (error) { renderUpdateState({ ...updateState, status: "error", error: error.message }); }
 }
 
 function renderSettingsAgentRouting() {
@@ -1061,12 +1267,14 @@ function renderChat() {
   messages.scrollTop = messages.scrollHeight;
 }
 async function sendChat(content) {
-  chatMessages.push({ role: "user", content }); chatMessages.push({ role: "assistant", content: "灵灵正在思考…", pending: true }); renderChat();
+  const command = parseWorkflowChatCommand(content);
+  chatMessages.push({ role: "user", content }); chatMessages.push({ role: "assistant", content: `${command.targetLabel}正在处理…`, label: command.targetLabel, pending: true }); renderChat();
+  document.querySelector("#chat-target").textContent = `@${command.targetLabel} · ${command.targetAgent === "commander" ? "主 Agent" : "单独执行"}`;
   try {
     if (!window.desktop?.chat) throw new Error("请先使用 Electron 桌面版并配置模型 API");
-    const result = await window.desktop.chat({ messages: chatMessages.filter((message) => !message.pending), context: getTeamContext() });
-    chatMessages[chatMessages.length - 1] = { role: "assistant", content: result.content, action: result.action };
-  } catch (error) { chatMessages[chatMessages.length - 1] = { role: "assistant", content: `暂时无法回答：${error.message}` }; }
+    const result = await window.desktop.chat({ messages: chatMessages.filter((message) => !message.pending).map(({ role, content: text }) => ({ role, content: text })), context: getTeamContext(), targetAgent: command.targetAgent, invokedSkills: command.invokedSkills });
+    chatMessages[chatMessages.length - 1] = { role: "assistant", content: result.content, action: result.action, label: command.targetLabel };
+  } catch (error) { chatMessages[chatMessages.length - 1] = { role: "assistant", content: `暂时无法回答：${error.message}`, label: command.targetLabel }; }
   renderChat();
 }
 function formatChatContent(content) {
@@ -1140,6 +1348,7 @@ function activateView(name, options = {}) {
   document.querySelectorAll("[data-view]").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
   document.querySelectorAll("[data-view-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.viewPanel === name));
   if (name === "sandbox") refreshSandboxPolicy();
+  if (name === "memory") requestAnimationFrame(drawMemoryGraph);
 }
 
 function goBackView() {
@@ -1318,8 +1527,10 @@ document.querySelector("#context-edit-agent").addEventListener("click", () => { 
 document.querySelector("#context-delete-agent").addEventListener("click", () => { const agent = officeAgents.find((item) => item.id === selectedAgentId); if (!agent || !confirm(uiText(`确定删除 ${agent.name} 吗？`))) return; officeAgents = officeAgents.filter((item) => item.id !== selectedAgentId); saveAgents(); hideAgentMenu(); render(); });
 document.querySelector("#agent-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); officeAgents = officeAgents.map((agent) => agent.id === data.get("id") ? { ...agent, name: data.get("name").trim(), role: data.get("role") } : agent); saveAgents(); render(); document.querySelector("#agent-dialog").close(); });
 
-document.querySelector("#chat-form").addEventListener("submit", (event) => { event.preventDefault(); const input = document.querySelector("#chat-input"); const content = input.value.trim(); if (!content) return; input.value = ""; sendChat(content); });
-document.querySelector("#chat-input").addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); document.querySelector("#chat-form").requestSubmit(); } });
+document.querySelector("#chat-form").addEventListener("submit", (event) => { event.preventDefault(); const input = document.querySelector("#chat-input"); const content = input.value.trim(); if (!content) return; input.value = ""; document.querySelector("#chat-candidates").hidden = true; sendChat(content); });
+document.querySelector("#chat-input").addEventListener("input", renderChatCandidates);
+document.querySelector("#chat-input").addEventListener("keydown", (event) => { if (event.key === "Escape") document.querySelector("#chat-candidates").hidden = true; if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); document.querySelector("#chat-form").requestSubmit(); } });
+document.querySelector("#chat-candidates").addEventListener("click", (event) => { const button = event.target.closest("[data-chat-token]"); if (!button) return; const input = document.querySelector("#chat-input"); const before = input.value.slice(0, input.selectionStart).replace(/(^|\s)[@/][^\s@/]*$/, (match, prefix) => `${prefix}${button.dataset.chatToken} `); input.value = before + input.value.slice(input.selectionStart); input.focus(); input.selectionStart = input.selectionEnd = before.length; document.querySelector("#chat-candidates").hidden = true; });
 document.querySelectorAll(".chat-suggestions button").forEach((button) => button.addEventListener("click", () => sendChat(button.textContent)));
 document.querySelector("#clear-chat-button").addEventListener("click", () => { chatMessages = []; renderChat(); });
 document.querySelector("#chat-messages").addEventListener("click", (event) => { const index = event.target.dataset.chatAction; if (index !== undefined) applyChatAction(Number(index)); });
@@ -1419,7 +1630,7 @@ document.querySelector("#document-form").addEventListener("submit", async (event
   catch (error) { eventLog.unshift(`资料读取失败：${error.message}`); setIntegrationFeedback("#document-form-state", `读取失败：${error.message}`, "error"); renderOrchestrator(); }
   finally { button.disabled = false; button.textContent = "读取资料"; }
 });
-document.querySelector("#external-resources").addEventListener("click", (event) => { const id = event.target.dataset.deleteResource; if (!id) return; externalResources = externalResources.filter((resource) => resource.id !== id); saveExternalResources(); renderExternalResources(); renderWorkflow(); });
+document.querySelector("#external-resources").addEventListener("click", async (event) => { const id = event.target.dataset.deleteResource; const url = event.target.dataset.openResource; if (url) { try { await window.desktop.openExternal(url); } catch (error) { setIntegrationFeedback("#document-form-state", `无法打开链接：${error.message}`, "error"); } return; } if (!id) return; externalResources = externalResources.filter((resource) => resource.id !== id); saveExternalResources(); renderExternalResources(); renderWorkflow(); });
 document.querySelector("#clear-resources-button").addEventListener("click", () => { if (!externalResources.length || confirm(uiText("确定清空所有外部资源吗？"))) { externalResources = []; saveExternalResources(); renderExternalResources(); renderWorkflow(); } });
 
 document.querySelector("#new-model-profile-button").addEventListener("click", () => openModelProfileDialog());
@@ -1543,6 +1754,18 @@ document.querySelector("#import-plugin-button").addEventListener("click", async 
     state.className = "plugin-note success";
   } catch (error) { state.textContent = `Skill 导入失败：${error.message}`; state.className = "plugin-note error"; }
 });
+document.querySelector("#import-plugin-directory-button").addEventListener("click", async () => {
+  const state = document.querySelector("#plugin-state");
+  try {
+    if (!window.desktop?.importPluginDirectory) throw new Error("请使用 Electron 桌面版导入 Skill 文件夹");
+    const result = await window.desktop.importPluginDirectory();
+    if (result.canceled) { state.textContent = "已取消导入"; return; }
+    pluginState = result.plugins || await window.desktop.getPlugins();
+    renderPlugins(); renderWorkflowChatCandidates(); renderChatCandidates();
+    state.textContent = `已导入 ${result.plugin?.name || "自定义 Skill"}，启用后可通过 / 调用。`;
+    state.className = "plugin-note success";
+  } catch (error) { state.textContent = `Skill 文件夹导入失败：${error.message}`; state.className = "plugin-note error"; }
+});
 document.querySelector("#provider-select").addEventListener("change", applyProviderDefaults);
 document.querySelector("#model-settings-form").addEventListener("submit", async (event) => { event.preventDefault(); const form = event.currentTarget; const button = document.querySelector("#save-model-button"); const config = getModelFormConfig(); button.disabled = true; button.textContent = "保存中"; setModelFeedback("正在调用 Windows 系统加密服务…"); try { const result = await configureRuntime(config); localStorage.removeItem("ai-software-team.model-settings"); form.apiKey.value = ""; applyModelSettings(result); setModelFeedback("保存成功，关闭并重新打开软件后仍可使用", "success"); eventLog.unshift(`灵灵已保存并连接 ${config.model}`); render(); } catch (error) { const status = await window.desktop?.getModelStatus?.().catch(() => null); if (status) setRuntimeState(status.configured, status.configured ? `${status.model} 已连接` : "模型待配置"); setModelFeedback(`保存失败：${error.message}`, "error"); eventLog.unshift(`配置失败：${error.message}`); renderOrchestrator(); } finally { button.disabled = false; button.textContent = "保存连接配置"; } });
 document.querySelector("#test-api-button").addEventListener("click", async () => { const button = document.querySelector("#test-api-button"); button.disabled = true; button.textContent = "测试中"; setModelFeedback("正在保存当前配置并测试模型响应…"); try { const config = getModelFormConfig(); const configured = await configureRuntime(config); document.querySelector("#model-settings-form").apiKey.value = ""; applyModelSettings(configured); const result = await window.desktop.testModel(); setRuntimeState(true, `${configured.model} 已连接`); setModelFeedback(`连接测试成功：${result.message}`, "success"); eventLog.unshift(`连接测试成功：${result.message}`); } catch (error) { setModelFeedback(`连接测试失败：${error.message}`, "error"); eventLog.unshift(`连接测试失败：${error.message}`); } finally { button.disabled = false; button.textContent = "测试连接"; renderOrchestrator(); } });
@@ -1582,6 +1805,50 @@ document.querySelector("#knowledge-search").addEventListener("input", (event) =>
 document.querySelector("#import-knowledge-button").addEventListener("click", () => document.querySelector("#knowledge-file-input").click());
 document.querySelector("#knowledge-file-input").addEventListener("change", async (event) => { for (const file of event.target.files) knowledgeDocuments.unshift({ id: crypto.randomUUID(), title: file.name, content: await file.text(), type: file.name.split(".").pop().toUpperCase(), size: `${Math.max(1, Math.round(file.size / 1024))} KB` }); saveMemory(); renderMemory(); renderWorkflow(); event.target.value = ""; });
 
+document.querySelector("#memory-graph-choose").addEventListener("click", () => chooseOrReindexMemoryGraph(true));
+document.querySelector("#memory-graph-reindex").addEventListener("click", () => chooseOrReindexMemoryGraph(false));
+document.querySelector("#memory-graph-open").addEventListener("click", async () => { try { await window.desktop.openMemoryGraphFolder(); } catch (error) { document.querySelector("#memory-graph-path").textContent = `无法打开文件夹：${error.message}`; } });
+document.querySelector("#memory-graph-search").addEventListener("input", drawMemoryGraph);
+document.querySelector("#memory-graph-filter").addEventListener("change", buildMemoryGraphScene);
+document.querySelector("#memory-node-close").addEventListener("click", () => { document.querySelector("#memory-node-inspector").hidden = true; memoryGraphScene.selectedId = null; drawMemoryGraph(); });
+const memoryCanvas = document.querySelector("#memory-graph-canvas");
+function memoryPointerPosition(event) {
+  const bounds = memoryCanvas.getBoundingClientRect();
+  return { screenX: event.clientX - bounds.left, screenY: event.clientY - bounds.top, x: (event.clientX - bounds.left - bounds.width / 2 - memoryGraphScene.offsetX) / memoryGraphScene.scale, y: (event.clientY - bounds.top - bounds.height / 2 - memoryGraphScene.offsetY) / memoryGraphScene.scale };
+}
+memoryCanvas.addEventListener("pointerdown", (event) => {
+  const point = memoryPointerPosition(event);
+  const node = [...memoryGraphScene.nodes].reverse().find((candidate) => { const position = memoryGraphScene.positions.get(candidate.id); return position && Math.hypot(position.x - point.x, position.y - point.y) <= 14 / memoryGraphScene.scale; });
+  memoryGraphScene.dragging = { kind: node ? "node" : "canvas", id: node?.id || null, startX: event.clientX, startY: event.clientY, offsetX: memoryGraphScene.offsetX, offsetY: memoryGraphScene.offsetY, moved: false };
+  if (node) memoryGraphScene.positions.get(node.id).fixed = true;
+  memoryCanvas.classList.add("dragging"); memoryCanvas.setPointerCapture(event.pointerId);
+});
+memoryCanvas.addEventListener("pointermove", (event) => {
+  const dragging = memoryGraphScene.dragging; if (!dragging) return;
+  const dx = event.clientX - dragging.startX; const dy = event.clientY - dragging.startY; if (Math.abs(dx) + Math.abs(dy) > 3) dragging.moved = true;
+  if (dragging.kind === "canvas") { memoryGraphScene.offsetX = dragging.offsetX + dx; memoryGraphScene.offsetY = dragging.offsetY + dy; }
+  else { const point = memoryPointerPosition(event); const position = memoryGraphScene.positions.get(dragging.id); if (position) { position.x = point.x; position.y = point.y; position.vx = 0; position.vy = 0; } }
+  drawMemoryGraph();
+});
+memoryCanvas.addEventListener("pointerup", (event) => {
+  const dragging = memoryGraphScene.dragging; if (!dragging) return;
+  if (dragging.kind === "node" && !dragging.moved) showMemoryNode(memoryGraphScene.nodes.find((node) => node.id === dragging.id));
+  memoryGraphScene.dragging = null; memoryCanvas.classList.remove("dragging");
+  try { memoryCanvas.releasePointerCapture(event.pointerId); } catch { /* 指针捕获可能已经被系统释放。 */ }
+});
+memoryCanvas.addEventListener("wheel", (event) => { event.preventDefault(); memoryGraphScene.scale = Math.max(.35, Math.min(2.4, memoryGraphScene.scale * (event.deltaY > 0 ? .9 : 1.1))); drawMemoryGraph(); }, { passive: false });
+new ResizeObserver(() => drawMemoryGraph()).observe(document.querySelector("#memory-graph-stage"));
+
+document.querySelectorAll("#update-auto-check,#update-auto-download,#update-install-restart").forEach((control) => control.addEventListener("change", async () => {
+  try { renderUpdateState(await window.desktop.setUpdateSettings({ autoCheck: document.querySelector("#update-auto-check").checked, autoDownload: document.querySelector("#update-auto-download").checked, installOnRestart: document.querySelector("#update-install-restart").checked })); }
+  catch (error) { renderUpdateState({ ...updateState, status: "error", error: error.message }); }
+}));
+document.querySelector("#update-check-button").addEventListener("click", async () => { const button = document.querySelector("#update-check-button"); button.disabled = true; try { renderUpdateState(await window.desktop.checkForUpdates()); } catch { /* 更新状态事件已经包含具体错误。 */ } finally { button.disabled = false; } });
+document.querySelector("#update-download-button").addEventListener("click", async () => { try { renderUpdateState(await window.desktop.downloadUpdate()); } catch { /* 更新状态事件已经包含具体错误。 */ } });
+document.querySelector("#update-restart-button").addEventListener("click", async () => { document.querySelector("#update-restart-button").disabled = true; try { await window.desktop.restartToUpdate(); } catch (error) { renderUpdateState({ ...updateState, status: "error", error: error.message }); document.querySelector("#update-restart-button").disabled = false; } });
+document.querySelector("#update-release-button").addEventListener("click", () => { if (updateState.releaseUrl) window.desktop.openExternal(updateState.releaseUrl).catch((error) => renderUpdateState({ ...updateState, status: "error", error: error.message })); });
+window.desktop?.onUpdateState?.((state) => renderUpdateState(state));
+
 setInterval(() => {
   const longRunning = officeAgents.filter((agent) => { const status = getAgentStatus(agent); return status.busy && status.startedAt && Date.now() - status.startedAt > 45000; });
   if (!longRunning.length) return;
@@ -1606,6 +1873,6 @@ document.addEventListener("app-language-change", () => {
 if (!window.WorkflowState?.templates?.[workflowEditorState.activeMode]) workflowEditorState.activeMode = "software";
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.workflowMode === workflowEditorState.activeMode));
 selectedWorkflowNodeId = window.WorkflowState?.templates?.[workflowEditorState.activeMode]?.nodes.find((node) => node.manager)?.id || "commander";
-installViewBackButtons(); loadModelSettings(); loadMediaModels(); loadModelPool(); loadPlugins(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
+installViewBackButtons(); loadModelSettings(); loadMediaModels(); loadModelPool(); loadPlugins(); loadMemoryGraph(); loadUpdateState(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));

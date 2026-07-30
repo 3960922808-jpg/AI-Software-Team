@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const MAX_MANIFEST_BYTES = 64 * 1024;
+const MAX_SKILL_BYTES = 512 * 1024;
 const builtInPlugins = [
   {
     id: "database-foundation",
@@ -74,6 +75,46 @@ function writeJson(filePath, value) {
   fs.renameSync(temporary, filePath);
 }
 
+function slugify(value) {
+  const slug = String(value || "").toLowerCase().trim().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+  return /^[a-z0-9]/.test(slug) ? slug : `skill-${require("crypto").createHash("sha1").update(String(value || Date.now())).digest("hex").slice(0, 10)}`;
+}
+
+function parseList(value) {
+  const text = String(value || "").trim();
+  if (!text) return [];
+  if (text.startsWith("[") && text.endsWith("]")) return text.slice(1, -1).split(",").map((item) => item.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean);
+  return text.split(/[,，]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function parseSkillMarkdown(content, sourcePath = "SKILL.md") {
+  const text = String(content || "").replace(/^\uFEFF/, "");
+  const metadata = {};
+  let body = text;
+  const frontmatter = text.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*\r?\n?/);
+  if (frontmatter) {
+    body = text.slice(frontmatter[0].length);
+    for (const line of frontmatter[1].split(/\r?\n/)) {
+      const match = line.match(/^([a-zA-Z][a-zA-Z0-9_-]*):\s*(.*)$/);
+      if (match) metadata[match[1].toLowerCase()] = match[2].trim().replace(/^['"]|['"]$/g, "");
+    }
+  }
+  const heading = body.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  const name = String(metadata.name || heading || path.basename(path.dirname(sourcePath)) || "Custom Skill").slice(0, 80);
+  const description = String(metadata.description || body.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#")) || "").slice(0, 240);
+  const skills = parseList(metadata.skills || metadata.skill || name).slice(0, 20);
+  return {
+    id: slugify(metadata.id || metadata.name || name),
+    name,
+    version: String(metadata.version || "1.0.0").slice(0, 30),
+    category: String(metadata.category || "自定义 Skill").slice(0, 30),
+    description,
+    agents: parseList(metadata.agents || metadata.agent).slice(0, 12),
+    skills: skills.length ? skills : [name],
+    prompt: body.trim().slice(0, 4000)
+  };
+}
+
 function createPluginRuntime({ directoryPath, statePath }) {
   if (!directoryPath || !statePath) throw new Error("插件目录和状态文件不能为空");
   fs.mkdirSync(directoryPath, { recursive: true });
@@ -137,7 +178,29 @@ function createPluginRuntime({ directoryPath, statePath }) {
     return { plugin: status().find((item) => item.id === plugin.id), plugins: status() };
   }
 
-  return { status, setEnabled, context, importManifest, directoryPath: path.resolve(directoryPath) };
+  function importSkillFile(sourcePath) {
+    const resolved = path.resolve(String(sourcePath || ""));
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) throw new Error("所选 Skill 文件不存在");
+    if (path.extname(resolved).toLowerCase() === ".json") return importManifest(resolved);
+    if (path.basename(resolved).toLowerCase() !== "skill.md" && path.extname(resolved).toLowerCase() !== ".md") throw new Error("Skill 文件必须是 JSON 或 SKILL.md");
+    if (fs.statSync(resolved).size > MAX_SKILL_BYTES) throw new Error("SKILL.md 不能超过 512KB");
+    const raw = parseSkillMarkdown(fs.readFileSync(resolved, "utf8"), resolved);
+    const plugin = normalizeManifest(raw, "local", resolved);
+    if (builtInPlugins.some((item) => item.id === plugin.id)) throw new Error("Skill ID 与内置插件冲突");
+    writeJson(path.join(directoryPath, `${plugin.id}.json`), raw);
+    fs.copyFileSync(resolved, path.join(directoryPath, `${plugin.id}.source.md`));
+    return { plugin: status().find((item) => item.id === plugin.id), plugins: status() };
+  }
+
+  function importSkillDirectory(sourcePath) {
+    const resolved = path.resolve(String(sourcePath || ""));
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) throw new Error("所选 Skill 文件夹不存在");
+    const skillPath = ["SKILL.md", "skill.md"].map((name) => path.join(resolved, name)).find((candidate) => fs.existsSync(candidate));
+    if (!skillPath) throw new Error("所选文件夹中没有 SKILL.md");
+    return importSkillFile(skillPath);
+  }
+
+  return { status, setEnabled, context, importManifest, importSkillFile, importSkillDirectory, directoryPath: path.resolve(directoryPath) };
 }
 
-module.exports = { createPluginRuntime, normalizeManifest, builtInPlugins };
+module.exports = { createPluginRuntime, normalizeManifest, parseSkillMarkdown, builtInPlugins };

@@ -693,6 +693,72 @@ body[data-interface-mode="workflow"] .sidebar nav { display:none; }
   .workflow-ai-chat { margin:0; padding:0 0 0 15px; border-top:0; border-left:1px solid #ddd; }
 }
 
+/* 主对话命令与长期记忆图谱 */
+.command-composer { position:relative; }
+.command-composer > .chat-command-state { display:flex; align-items:center; gap:8px; margin:0 0 7px; }
+.chat-command-state > span { padding:4px 7px; border:1px solid #bcd7cf; border-radius:5px; background:#edf7f3; color:#176b63; font-size:10px; font-weight:700; }
+.chat-command-state small { color:#777; font-size:9px; }
+.command-composer > .chat-input-shell { position:relative; display:block; margin:0; }
+.chat-input-shell textarea { display:block; }
+.chat-candidates { right:0; bottom:100%; left:0; margin-bottom:5px; }
+
+.memory-graph-section { margin-bottom:18px; border:1px solid #ddd; border-radius:8px; overflow:hidden; background:#fff; box-shadow:0 7px 22px rgba(0,0,0,.035); }
+.memory-graph-section > .section-heading { padding:15px 17px; border-bottom:1px solid #e5e5e5; }
+.memory-graph-section h2 { margin:2px 0 0; font-size:16px; }
+.memory-graph-toolbar { display:grid; grid-template-columns:220px 150px minmax(0,1fr); align-items:end; gap:10px; padding:11px 14px; border-bottom:1px solid #e7e7e7; background:#fafafa; }
+.memory-graph-toolbar label { display:grid; gap:4px; color:#555; font-size:9px; font-weight:700; }
+.memory-graph-toolbar input,.memory-graph-toolbar select { width:100%; min-width:0; padding:7px 8px; }
+.memory-graph-toolbar > span { align-self:center; overflow:hidden; color:#666; font-size:10px; text-overflow:ellipsis; white-space:nowrap; }
+.memory-graph-stage { position:relative; height:480px; overflow:hidden; background:#fcfcfc; }
+.memory-graph-stage canvas { display:block; width:100%; height:100%; cursor:grab; }
+.memory-graph-stage canvas.dragging { cursor:grabbing; }
+.memory-graph-empty { position:absolute; inset:0; display:grid; place-content:center; justify-items:center; gap:7px; padding:24px; text-align:center; pointer-events:none; }
+.memory-graph-empty strong { font-size:16px; }
+.memory-graph-empty span { max-width:520px; color:#777; font-size:11px; line-height:1.6; }
+.memory-graph-empty[hidden] { display:none; }
+.memory-node-inspector { position:absolute; top:12px; right:12px; width:min(310px,calc(100% - 24px)); max-height:calc(100% - 24px); overflow:auto; padding:15px; border:1px solid #d5d5d5; border-radius:7px; background:rgba(255,255,255,.94); box-shadow:0 12px 32px rgba(0,0,0,.12); backdrop-filter:blur(20px); }
+.memory-node-inspector[hidden] { display:none; }
+.memory-node-inspector .icon-button { float:right; }
+.memory-node-inspector h3 { margin:4px 0 8px; font-size:16px; }
+.memory-node-inspector code { display:block; overflow-wrap:anywhere; color:#176b63; font-size:10px; }
+.memory-node-inspector > p:not(.eyebrow) { color:#555; font-size:11px; line-height:1.55; }
+.memory-node-inspector > div { display:flex; flex-wrap:wrap; gap:5px; }
+.memory-node-inspector > div span { padding:3px 6px; border-radius:4px; background:#eee; color:#444; font-size:9px; }
+.memory-graph-loading { position:absolute; inset:0; z-index:5; display:grid; place-content:center; justify-items:center; gap:8px; background:rgba(255,255,255,.92); backdrop-filter:blur(10px); }
+.memory-graph-loading[hidden] { display:none; }
+.memory-graph-loading > span { color:#666; font-size:10px; }
+.memory-graph-loading > div:last-child { width:280px; height:6px; overflow:hidden; border-radius:3px; background:#ddd; }
+.memory-graph-loading > div:last-child b { display:block; width:8%; height:100%; background:#176b63; transition:width .25s ease; }
+.memory-loader-network { position:relative; width:76px; height:52px; }
+.memory-loader-network::before,.memory-loader-network::after { content:""; position:absolute; top:25px; left:13px; width:50px; height:1px; background:#aaa; transform:rotate(22deg); animation:memoryLink 1.4s ease-in-out infinite alternate; }
+.memory-loader-network::after { transform:rotate(-22deg); animation-delay:-.7s; }
+.memory-loader-network i { position:absolute; width:10px; height:10px; border-radius:50%; background:#176b63; animation:memoryNode 1.2s ease-in-out infinite alternate; }
+.memory-loader-network i:nth-child(1) { left:4px; top:7px; }.memory-loader-network i:nth-child(2) { right:4px; top:7px; animation-delay:-.3s; }.memory-loader-network i:nth-child(3) { left:4px; bottom:5px; animation-delay:-.6s; }.memory-loader-network i:nth-child(4) { right:4px; bottom:5px; animation-delay:-.9s; }
+@keyframes memoryNode { to { transform:scale(1.45); background:#7a6fa5; } }
+@keyframes memoryLink { to { opacity:.35; } }
+
+.update-settings { margin-top:22px; border:1px solid #ddd; border-radius:8px; background:#fff; box-shadow:0 7px 22px rgba(0,0,0,.035); }
+.update-settings > .section-heading { padding:16px 18px; border-bottom:1px solid #e1e1e1; }
+.update-settings h2 { margin:0; font-size:16px; }
+.update-layout { display:grid; grid-template-columns:180px minmax(300px,1fr) auto; align-items:center; gap:20px; padding:18px; }
+.update-version span,.update-version small { display:block; color:#777; font-size:10px; }.update-version strong { display:block; margin:5px 0; font-size:24px; }
+.update-options { display:grid; gap:8px; }
+.update-options label { display:flex; align-items:center; gap:8px; color:#333; font-size:11px; }
+.update-options input { width:15px; height:15px; accent-color:#176b63; }
+.update-actions { display:flex; justify-content:flex-end; flex-wrap:wrap; gap:7px; max-width:320px; }
+.update-progress { padding:0 18px 15px; }
+.update-progress[hidden] { display:none; }
+.update-progress > div { display:flex; justify-content:space-between; margin-bottom:6px; color:#555; font-size:10px; }
+.update-progress progress { width:100%; height:7px; accent-color:#176b63; }
+.update-settings > .model-save-feedback { margin:0; padding:12px 18px; border-top:1px solid #eee; }
+
+@media (max-width:900px) {
+  .memory-graph-toolbar,.update-layout { grid-template-columns:1fr; }
+  .memory-graph-stage { height:420px; }
+  .update-actions { justify-content:flex-start; max-width:none; }
+}
+@media (prefers-reduced-motion:reduce) { .memory-loader-network i,.memory-loader-network::before,.memory-loader-network::after { animation:none; } }
+
 /* 技能中心标准滑块，隔离全局输入框样式 */
 .skill-list .skill-toggle {
   appearance:none;

@@ -10,6 +10,8 @@ const { createModelPoolStore } = require("./model-pool-store");
 const { createIntegrationSettingsStore } = require("./integration-settings-store");
 const { createWorkspaceSettingsStore } = require("./workspace-settings-store");
 const { createPluginRuntime } = require("./plugin-runtime");
+const { createMemoryGraphRuntime } = require("./memory-graph-runtime");
+const { createUpdateRuntime } = require("./update-runtime");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
@@ -17,6 +19,9 @@ let integrationSettingsStore = null;
 let workspaceSettingsStore = null;
 let mediaModelStores = null;
 let pluginRuntime = null;
+let memoryGraphRuntime = null;
+let updateRuntime = null;
+let updateInstallStarted = false;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
 
@@ -80,6 +85,13 @@ function initializeModelSettings() {
   pluginRuntime = createPluginRuntime({
     directoryPath: path.join(app.getPath("userData"), "plugins"),
     statePath: path.join(app.getPath("userData"), "plugins-state.json"),
+  });
+  memoryGraphRuntime = createMemoryGraphRuntime({ statePath: path.join(app.getPath("userData"), "memory-graph.json") });
+  updateRuntime = createUpdateRuntime({
+    currentVersion: app.getVersion(),
+    userDataPath: app.getPath("userData"),
+    installPath: path.dirname(process.execPath),
+    executablePath: process.execPath,
   });
   const saved = modelSettingsStore.load();
   if (saved) modelRuntime.configure(saved);
@@ -297,14 +309,19 @@ if (!app.requestSingleInstanceLock()) {
       fs.writeFileSync(result.filePath, content, "utf8");
       return { canceled: false, path: result.filePath, bytes: Buffer.byteLength(content, "utf8") };
     });
-    ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask({ ...payload, plugins: pluginRuntime?.context() || [] }));
-    ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [] }));
+    ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context() || null }));
+    ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context() || null }));
     ipcMain.handle("plugins:get", () => pluginRuntime?.status() || []);
     ipcMain.handle("plugins:set-enabled", (_event, pluginId, enabled) => pluginRuntime.setEnabled(pluginId, enabled));
     ipcMain.handle("plugins:import", async () => {
-      const result = await dialog.showOpenDialog({ title: "导入自定义 Skill", properties: ["openFile"], filters: [{ name: "Skill JSON", extensions: ["json"] }] });
+      const result = await dialog.showOpenDialog({ title: "上传自定义 Skill", properties: ["openFile"], filters: [{ name: "Skill 文件", extensions: ["json", "md"] }] });
       if (result.canceled || !result.filePaths[0]) return { canceled: true, plugins: pluginRuntime.status() };
-      return { canceled: false, ...pluginRuntime.importManifest(result.filePaths[0]) };
+      return { canceled: false, ...pluginRuntime.importSkillFile(result.filePaths[0]) };
+    });
+    ipcMain.handle("plugins:import-directory", async () => {
+      const result = await dialog.showOpenDialog({ title: "导入包含 SKILL.md 的文件夹", properties: ["openDirectory"] });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true, plugins: pluginRuntime.status() };
+      return { canceled: false, ...pluginRuntime.importSkillDirectory(result.filePaths[0]) };
     });
     ipcMain.handle("plugins:open-directory", async () => {
       const error = await shell.openPath(pluginRuntime.directoryPath);
@@ -326,6 +343,21 @@ if (!app.requestSingleInstanceLock()) {
       if (!selectedPath) { workspaceSettingsStore.clear(); return modelRuntime.setWorkspace(null); }
       const saved = workspaceSettingsStore.persist(selectedPath);
       return modelRuntime.setWorkspace(saved.path);
+    });
+    ipcMain.handle("memory-graph:get", () => memoryGraphRuntime.get());
+    ipcMain.handle("memory-graph:choose-folder", async () => {
+      const result = await dialog.showOpenDialog({ title: "选择长期记忆文件夹", properties: ["openDirectory"] });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true, graph: memoryGraphRuntime.get() };
+      return { canceled: false, graph: memoryGraphRuntime.reindex(result.filePaths[0]) };
+    });
+    ipcMain.handle("memory-graph:reindex", () => memoryGraphRuntime.reindex());
+    ipcMain.handle("memory-graph:clear", () => memoryGraphRuntime.clear());
+    ipcMain.handle("memory-graph:open-folder", async () => {
+      const target = memoryGraphRuntime.get().rootPath;
+      if (!target) throw new Error("尚未选择长期记忆文件夹");
+      const error = await shell.openPath(target);
+      if (error) throw new Error(error);
+      return { opened: true, path: target };
     });
     ipcMain.handle("workspace:choose", async () => {
       const result = await dialog.showOpenDialog({ title: "选择 Agent 产物工作目录", properties: ["openDirectory", "createDirectory"] });
@@ -355,8 +387,41 @@ if (!app.requestSingleInstanceLock()) {
     ipcMain.handle("integration:test", () => integrationRuntime.testConnection());
     ipcMain.handle("integration:fetch-document", (_event, url) => integrationRuntime.fetchDocument(url));
     ipcMain.handle("integration:inspect-repository", (_event, repository) => integrationRuntime.inspectRepository(repository));
+    ipcMain.handle("integration:open-external", async (_event, url) => {
+      const validated = await integrationRuntime.validatePublicUrl(url);
+      await shell.openExternal(validated.toString());
+      return { opened: true };
+    });
+    ipcMain.handle("update:status", () => updateRuntime.status());
+    ipcMain.handle("update:settings", (_event, settings) => updateRuntime.setSettings(settings));
+    ipcMain.handle("update:check", () => updateRuntime.check());
+    ipcMain.handle("update:download", () => updateRuntime.download());
+    ipcMain.handle("update:restart", () => {
+      if (!app.isPackaged) throw new Error("开发环境不能执行覆盖更新，请使用打包版本测试");
+      updateRuntime.installOnExit(process.pid);
+      updateInstallStarted = true;
+      setImmediate(() => app.quit());
+      return { restarting: true };
+    });
+    updateRuntime.onChange((state) => {
+      for (const targetWindow of BrowserWindow.getAllWindows()) if (!targetWindow.isDestroyed()) targetWindow.webContents.send("update:state", state);
+    });
     await updateSplash(splashWindow, 72, "正在连接任务、记忆与审计中心");
     createWindow(splashWindow, startupStartedAt);
+    if (!process.env.AI_TEAM_SCREENSHOT && !process.env.AI_TEAM_SMOKE_TEST && updateRuntime.status().settings.autoCheck) {
+      setTimeout(async () => {
+        try {
+          const result = await updateRuntime.check();
+          if (result.available && result.settings.autoDownload) await updateRuntime.download();
+        } catch (error) { console.error(`自动更新检查失败：${error.message}`); }
+      }, 12000).unref();
+      setInterval(async () => {
+        try {
+          const result = await updateRuntime.check();
+          if (result.available && result.settings.autoDownload) await updateRuntime.download();
+        } catch (error) { console.error(`定时更新检查失败：${error.message}`); }
+      }, 6 * 60 * 60 * 1000).unref();
+    }
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
@@ -365,4 +430,13 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
+});
+
+app.on("before-quit", () => {
+  if (updateInstallStarted || !app.isPackaged || !updateRuntime) return;
+  const state = updateRuntime.status();
+  if (state.readyToInstall && state.settings.installOnRestart) {
+    try { updateRuntime.installOnExit(process.pid); updateInstallStarted = true; }
+    catch (error) { console.error(`安排更新安装失败：${error.message}`); }
+  }
 });

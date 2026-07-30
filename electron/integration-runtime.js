@@ -72,14 +72,14 @@ function cleanHtml(html) {
 }
 
 async function fetchDocument(value) {
-  const { response, body, finalUrl } = await safeFetch(value, { headers: { "user-agent": "AI-Software-Team/0.10" } });
+  const { response, body, finalUrl } = await safeFetch(value, { headers: { "user-agent": "AI-Software-Team/0.20" } });
   const contentType = response.headers.get("content-type") || "";
   const title = contentType.includes("html") ? (body.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || new URL(finalUrl).hostname) : new URL(finalUrl).pathname.split("/").pop() || new URL(finalUrl).hostname;
   const content = contentType.includes("html") ? cleanHtml(body) : body.trim();
   return { title: cleanHtml(title).slice(0, 160), url: finalUrl, contentType: contentType.split(";")[0], content: content.slice(0, 50000), fetchedAt: new Date().toISOString() };
 }
 
-function parseRepository(value) {
+function parseRepositoryLocation(value) {
   const input = String(value || "").trim();
   const normalized = input
     .replace(/^git@github\.com:/i, "")
@@ -88,13 +88,18 @@ function parseRepository(value) {
     .replace(/^github\.com\//i, "")
     .split(/[?#]/)[0]
     .replace(/\/+$/, "");
-  const match = normalized.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:\/(?:tree|blob|releases|issues|pull|actions|settings)(?:\/.*)?)?$/i);
+  const match = normalized.match(/^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+?)(?:\.git)?(?:\/(tree|blob)\/([^/]+)(?:\/(.*))?|\/(?:releases|issues|pull|actions|settings)(?:\/.*)?)?$/i);
   if (!match) throw new Error("请输入 owner/repository 或完整的 GitHub 仓库地址");
-  return { owner: match[1], repository: match[2] };
+  return { owner: match[1], repository: match[2], ref: match[4] || "", path: match[5] || "", view: match[3] || "" };
+}
+
+function parseRepository(value) {
+  const { owner, repository } = parseRepositoryLocation(value);
+  return { owner, repository };
 }
 
 async function githubRequest(endpoint) {
-  const headers = { accept: "application/vnd.github+json", "user-agent": "AI-Software-Team/0.10", "x-github-api-version": "2022-11-28" };
+  const headers = { accept: "application/vnd.github+json", "user-agent": "AI-Software-Team/0.20", "x-github-api-version": "2022-11-28" };
   if (githubToken) headers.authorization = `Bearer ${githubToken}`;
   try {
     const { body, response } = await safeFetch(`https://api.github.com${endpoint}`, { headers });
@@ -121,18 +126,20 @@ async function testConnection() {
 }
 
 async function inspectRepository(value) {
-  const { owner, repository } = parseRepository(value);
+  const { owner, repository, ref, path: requestedPath } = parseRepositoryLocation(value);
   const { data: metadata } = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}`);
   let tree = { tree: [], truncated: false };
-  if (metadata.default_branch) {
+  const selectedBranch = ref || metadata.default_branch;
+  if (selectedBranch) {
     try {
-      const result = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/git/trees/${encodeURIComponent(metadata.default_branch)}?recursive=1`);
+      const result = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repository)}/git/trees/${encodeURIComponent(selectedBranch)}?recursive=1`);
       tree = result.data;
     } catch (error) {
       if (!/仓库不存在/.test(error.message)) throw error;
     }
   }
-  const blobs = (tree.tree || []).filter((item) => item.type === "blob");
+  const normalizedPrefix = requestedPath ? `${requestedPath.replace(/^\/+|\/+$/g, "")}/` : "";
+  const blobs = (tree.tree || []).filter((item) => item.type === "blob" && (!normalizedPrefix || item.path === requestedPath || item.path.startsWith(normalizedPrefix)));
   const files = blobs.slice(0, 500).map((item) => ({ path: item.path, size: item.size || 0, sha: item.sha }));
   return {
     id: `${owner}/${repository}`,
@@ -140,6 +147,8 @@ async function inspectRepository(value) {
     description: metadata.description || "",
     url: metadata.html_url,
     defaultBranch: metadata.default_branch,
+    selectedBranch,
+    selectedPath: requestedPath,
     language: metadata.language || "未识别",
     stars: metadata.stargazers_count || 0,
     private: Boolean(metadata.private),
@@ -149,4 +158,4 @@ async function inspectRepository(value) {
   };
 }
 
-module.exports = { configure, clear, status, testConnection, fetchDocument, inspectRepository, validatePublicUrl, parseRepository };
+module.exports = { configure, clear, status, testConnection, fetchDocument, inspectRepository, validatePublicUrl, parseRepository, parseRepositoryLocation };

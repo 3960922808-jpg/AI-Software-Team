@@ -21,7 +21,13 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   getPlugins: () => ipcRenderer.invoke("plugins:get"),
   setPluginEnabled: (pluginId, enabled) => ipcRenderer.invoke("plugins:set-enabled", pluginId, enabled),
   importPlugin: () => ipcRenderer.invoke("plugins:import"),
+  importPluginDirectory: () => ipcRenderer.invoke("plugins:import-directory"),
   openPluginDirectory: () => ipcRenderer.invoke("plugins:open-directory"),
+  getMemoryGraph: () => ipcRenderer.invoke("memory-graph:get"),
+  chooseMemoryGraphFolder: () => ipcRenderer.invoke("memory-graph:choose-folder"),
+  reindexMemoryGraph: () => ipcRenderer.invoke("memory-graph:reindex"),
+  clearMemoryGraph: () => ipcRenderer.invoke("memory-graph:clear"),
+  openMemoryGraphFolder: () => ipcRenderer.invoke("memory-graph:open-folder"),
   getSandboxStatus: () => ipcRenderer.invoke("sandbox:status"),
   verifyTaskProject: (taskId) => ipcRenderer.invoke("sandbox:verify", taskId),
   getTaskGitStatus: (taskId) => ipcRenderer.invoke("sandbox:git-status", taskId),
@@ -38,5 +44,16 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   getIntegrationStatus: () => ipcRenderer.invoke("integration:status"),
   testIntegration: () => ipcRenderer.invoke("integration:test"),
   fetchDocument: (url) => ipcRenderer.invoke("integration:fetch-document", url),
-  inspectRepository: (repository) => ipcRenderer.invoke("integration:inspect-repository", repository)
+  inspectRepository: (repository) => ipcRenderer.invoke("integration:inspect-repository", repository),
+  openExternal: (url) => ipcRenderer.invoke("integration:open-external", url),
+  getUpdateStatus: () => ipcRenderer.invoke("update:status"),
+  setUpdateSettings: (settings) => ipcRenderer.invoke("update:settings", settings),
+  checkForUpdates: () => ipcRenderer.invoke("update:check"),
+  downloadUpdate: () => ipcRenderer.invoke("update:download"),
+  restartToUpdate: () => ipcRenderer.invoke("update:restart"),
+  onUpdateState: (listener) => {
+    const handler = (_event, state) => listener(state);
+    ipcRenderer.on("update:state", handler);
+    return () => ipcRenderer.removeListener("update:state", handler);
+  }
 }));

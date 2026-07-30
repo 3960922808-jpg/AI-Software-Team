@@ -12,6 +12,8 @@ async function main() {
   assert.deepStrictEqual(integration.parseRepository("https://github.com/openai/codex/tree/main"), { owner: "openai", repository: "codex" });
   assert.deepStrictEqual(integration.parseRepository("git@github.com:openai/codex.git"), { owner: "openai", repository: "codex" });
   assert.deepStrictEqual(integration.parseRepository("github.com/openai/codex/"), { owner: "openai", repository: "codex" });
+  assert.deepStrictEqual(integration.parseRepositoryLocation("https://github.com/openai/codex/tree/feature/src"), { owner: "openai", repository: "codex", ref: "feature", path: "src", view: "tree" });
+  assert.deepStrictEqual(integration.parseRepositoryLocation("https://github.com/openai/codex/blob/main/README.md"), { owner: "openai", repository: "codex", ref: "main", path: "README.md", view: "blob" });
   await assert.rejects(() => integration.validatePublicUrl("http://example.com"), /只允许使用 HTTPS/);
   await assert.rejects(() => integration.validatePublicUrl("https://127.0.0.1/private"), /拒绝访问本机或局域网地址/);
   await assert.rejects(() => integration.validatePublicUrl("https://localhost/private"), /拒绝访问本机或局域网地址/);

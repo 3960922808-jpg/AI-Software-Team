@@ -36,6 +36,13 @@ function main() {
     const largePath = path.join(root, "large.json");
     fs.writeFileSync(largePath, JSON.stringify({ data: "x".repeat(70 * 1024) }), "utf8");
     assert.throws(() => runtime.importManifest(largePath), /64KB/);
+    const markdownPath = path.join(root, "SKILL.md");
+    fs.writeFileSync(markdownPath, "---\nid: release-review\nname: Release Review\nagents: [测试 Agent, DevOps Agent]\nskills: [release review, checksum]\ndescription: Validate a release before delivery.\n---\n# Release Review\nInspect tests, checksums and release notes before delivery.", "utf8");
+    const markdownImport = runtime.importSkillFile(markdownPath);
+    assert.equal(markdownImport.plugin.id, "release-review");
+    assert.ok(markdownImport.plugin.skills.includes("checksum"));
+    const directoryImport = runtime.importSkillDirectory(root);
+    assert.equal(directoryImport.plugin.id, "release-review");
     console.log("通过：插件状态、自定义 Skill 导入、大小限制与内置 ID 冲突保护");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }

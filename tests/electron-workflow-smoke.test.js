@@ -94,6 +94,10 @@ async function main() {
         chat: Boolean(document.querySelector('#workflow-chat-form')),
         modelSelect: Boolean(document.querySelector('#workflow-node-model')),
         importSkill: Boolean(document.querySelector('#import-plugin-button')),
+        importSkillDirectory: typeof window.desktop?.importPluginDirectory === 'function',
+        mainCommandChat: Boolean(document.querySelector('#chat-candidates')) && typeof renderChatCandidates === 'function',
+        memoryGraph: Boolean(document.querySelector('#memory-graph-canvas')) && typeof window.desktop?.getMemoryGraph === 'function',
+        updater: typeof window.desktop?.getUpdateStatus === 'function' && typeof window.desktop?.checkForUpdates === 'function',
         backButtons: document.querySelectorAll('[data-view-back]').length,
         agentRoutes: document.querySelectorAll('[data-settings-model-target]').length,
         integrationTest: typeof window.desktop?.testIntegration === 'function',
@@ -111,6 +115,7 @@ async function main() {
     assert.ok(initial.managerLeft < initial.firstAgentLeft);
     assert.equal(initial.managerBranches, 10);
     assert.ok(initial.chat && initial.modelSelect && initial.importSkill);
+    assert.ok(initial.importSkillDirectory && initial.mainCommandChat && initial.memoryGraph && initial.updater);
     assert.ok(initial.backButtons >= 10);
     assert.equal(initial.agentRoutes, 11);
     assert.equal(initial.integrationTest, true);
@@ -119,6 +124,25 @@ async function main() {
     assert.equal(initial.languageControls, 2);
     assert.equal(initial.demoPanels, 0);
     assert.notEqual(initial.templateColor, initial.templateBackground);
+
+    const commandRouting = await client.evaluate(`(() => { const command = parseWorkflowChatCommand('@前端 Agent /界面实现 检查主界面'); return { target: command.targetAgent, skills: command.invokedSkills }; })()`);
+    assert.equal(commandRouting.target, '前端 Agent');
+    assert.ok(commandRouting.skills.includes('界面实现'));
+    const graphSurface = await client.evaluate(`(() => {
+      memoryGraphState = { rootPath:'C:\\\\demo', rootName:'demo', stats:{nodes:4,edges:3}, nodes:[
+        {id:'root',type:'root',label:'demo',path:'.',keywords:[]}, {id:'src',type:'directory',label:'src',path:'src',keywords:[]},
+        {id:'app',type:'file',label:'app.js',path:'src/app.js',extension:'.js',keywords:['agent'],summary:'Main agent runtime'},
+        {id:'agent',type:'concept',label:'agent',path:'',keywords:['agent'],weight:2}
+      ], edges:[{id:'e1',from:'root',to:'src',type:'contains'},{id:'e2',from:'src',to:'app',type:'contains'},{id:'e3',from:'app',to:'agent',type:'related'}] };
+      renderMemoryGraph(); drawMemoryGraph();
+      return { nodes:memoryGraphScene.nodes.length, edges:memoryGraphScene.edges.length, width:document.querySelector('#memory-graph-canvas').width, summary:document.querySelector('#memory-graph-summary').textContent };
+    })()`);
+    assert.equal(graphSurface.nodes, 4);
+    assert.equal(graphSurface.edges, 3);
+    assert.ok(graphSurface.width > 0);
+    assert.match(graphSurface.summary, /4/);
+    const updaterStatus = await client.evaluate('window.desktop.getUpdateStatus()');
+    assert.equal(updaterStatus.currentVersion, '0.20.0');
 
     const originalRoleValue = await client.evaluate("document.querySelector('#task-form [name=\"agent\"] option').value");
     await client.evaluate("window.AppI18n.setLanguage('en-US'); true");
@@ -279,7 +303,7 @@ async function main() {
     assert.equal(persistedLanguage.language, "en-US");
     assert.equal(persistedLanguage.lang, "en-US");
     assert.match(persistedLanguage.title, /Project Workspace/);
-    console.log("通过：Electron 独立媒体配置、双语切换、用户任务、返回导航、模型路由、拖动、动画连线与右键定位");
+    console.log("通过：Electron 主对话命令、长期记忆图谱、更新接口、独立媒体配置、双语切换、模型路由、拖动、动画连线与右键定位");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
