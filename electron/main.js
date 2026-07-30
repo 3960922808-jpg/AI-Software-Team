@@ -12,6 +12,8 @@ const { createWorkspaceSettingsStore } = require("./workspace-settings-store");
 const { createPluginRuntime } = require("./plugin-runtime");
 const { createMemoryGraphRuntime } = require("./memory-graph-runtime");
 const { createUpdateRuntime } = require("./update-runtime");
+const { createVoiceSettingsStore } = require("./voice-settings-store");
+const { createVoiceRuntime } = require("./voice-runtime");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
@@ -21,6 +23,8 @@ let mediaModelStores = null;
 let pluginRuntime = null;
 let memoryGraphRuntime = null;
 let updateRuntime = null;
+let voiceSettingsStore = null;
+let voiceRuntime = null;
 let updateInstallStarted = false;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
@@ -81,6 +85,11 @@ function initializeModelSettings() {
     image: createModelSettingsStore({ filePath: path.join(app.getPath("userData"), "image-model-settings.json"), ...encryption }),
     video: createModelSettingsStore({ filePath: path.join(app.getPath("userData"), "video-model-settings.json"), ...encryption }),
   };
+  voiceSettingsStore = createVoiceSettingsStore({
+    filePath: path.join(app.getPath("userData"), "voice-settings.json"),
+    ...encryption,
+  });
+  voiceRuntime = createVoiceRuntime({ getConfiguration: () => voiceSettingsStore.load() });
   workspaceSettingsStore = createWorkspaceSettingsStore({ filePath: path.join(app.getPath("userData"), "workspace-settings.json") });
   pluginRuntime = createPluginRuntime({
     directoryPath: path.join(app.getPath("userData"), "plugins"),
@@ -132,6 +141,7 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
   });
 
   window.loadFile(path.join(__dirname, "..", "index.html"));
+  window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => callback(permission === "media"));
   window.once("ready-to-show", async () => {
     if (!splashWindow || splashWindow.isDestroyed()) { if (!process.env.AI_TEAM_SMOKE_TEST) window.show(); return; }
     await updateSplash(splashWindow, 92, "正在准备工作台界面");
@@ -171,6 +181,10 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
           document.querySelectorAll('[data-view-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.viewPanel === requestedView));
         })()`);
         await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      if (process.env.AI_TEAM_SCREENSHOT_TARGET) {
+        await window.webContents.executeJavaScript(`document.querySelector(${JSON.stringify(process.env.AI_TEAM_SCREENSHOT_TARGET)})?.scrollIntoView({ block: "start" })`);
+        await new Promise((resolve) => setTimeout(resolve, 180));
       }
       const image = await window.webContents.capturePage();
       fs.writeFileSync(process.env.AI_TEAM_SCREENSHOT, image.toPNG());
@@ -309,8 +323,14 @@ if (!app.requestSingleInstanceLock()) {
       fs.writeFileSync(result.filePath, content, "utf8");
       return { canceled: false, path: result.filePath, bytes: Buffer.byteLength(content, "utf8") };
     });
-    ipcMain.handle("agent:execute", (_event, payload) => modelRuntime.executeTask({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context() || null }));
-    ipcMain.handle("agent:chat", (_event, payload) => modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context() || null }));
+    ipcMain.handle("agent:execute", (_event, payload) => {
+      const query = `${payload?.title || ""} ${payload?.description || ""}`.trim();
+      return modelRuntime.executeTask({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context(query) || null });
+    });
+    ipcMain.handle("agent:chat", (_event, payload) => {
+      const query = payload?.messages?.at?.(-1)?.content || "";
+      return modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context(query) || null });
+    });
     ipcMain.handle("plugins:get", () => pluginRuntime?.status() || []);
     ipcMain.handle("plugins:set-enabled", (_event, pluginId, enabled) => pluginRuntime.setEnabled(pluginId, enabled));
     ipcMain.handle("plugins:import", async () => {
@@ -345,12 +365,14 @@ if (!app.requestSingleInstanceLock()) {
       return modelRuntime.setWorkspace(saved.path);
     });
     ipcMain.handle("memory-graph:get", () => memoryGraphRuntime.get());
-    ipcMain.handle("memory-graph:choose-folder", async () => {
+    ipcMain.handle("memory-graph:search", (_event, query, limit) => memoryGraphRuntime.search(query, limit));
+    ipcMain.handle("memory-graph:choose-folder", async (_event) => {
       const result = await dialog.showOpenDialog({ title: "选择长期记忆文件夹", properties: ["openDirectory"] });
       if (result.canceled || !result.filePaths[0]) return { canceled: true, graph: memoryGraphRuntime.get() };
-      return { canceled: false, graph: memoryGraphRuntime.reindex(result.filePaths[0]) };
+      const sender = _event.sender;
+      return { canceled: false, graph: await memoryGraphRuntime.reindex(result.filePaths[0], (progress) => { if (!sender.isDestroyed()) sender.send("memory-graph:progress", progress); }) };
     });
-    ipcMain.handle("memory-graph:reindex", () => memoryGraphRuntime.reindex());
+    ipcMain.handle("memory-graph:reindex", async (event) => memoryGraphRuntime.reindex(undefined, (progress) => { if (!event.sender.isDestroyed()) event.sender.send("memory-graph:progress", progress); }));
     ipcMain.handle("memory-graph:clear", () => memoryGraphRuntime.clear());
     ipcMain.handle("memory-graph:open-folder", async () => {
       const target = memoryGraphRuntime.get().rootPath;
@@ -364,6 +386,15 @@ if (!app.requestSingleInstanceLock()) {
       if (result.canceled) return modelRuntime.getWorkspace();
       const saved = workspaceSettingsStore.persist(result.filePaths[0]);
       return modelRuntime.setWorkspace(saved.path);
+    });
+    ipcMain.handle("voice:get", () => voiceSettingsStore.status());
+    ipcMain.handle("voice:configure", (_event, payload) => voiceSettingsStore.persist(payload));
+    ipcMain.handle("voice:clear", () => { voiceSettingsStore.clear(); return voiceSettingsStore.status(); });
+    ipcMain.handle("voice:test", () => voiceRuntime.test());
+    ipcMain.handle("voice:transcribe", (_event, payload) => voiceRuntime.transcribe(payload));
+    ipcMain.handle("voice:synthesize", async (_event, payload) => {
+      const result = await voiceRuntime.synthesize(payload);
+      return { ...result, audio: new Uint8Array(result.audio) };
     });
     ipcMain.handle("delivery:inspect", () => deliveryRuntime.inspect(modelRuntime.getWorkspace().path));
     ipcMain.handle("delivery:create", (_event, payload) => deliveryRuntime.createRelease(modelRuntime.getWorkspace().path, payload));

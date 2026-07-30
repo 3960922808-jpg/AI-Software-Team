@@ -24,10 +24,22 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   importPluginDirectory: () => ipcRenderer.invoke("plugins:import-directory"),
   openPluginDirectory: () => ipcRenderer.invoke("plugins:open-directory"),
   getMemoryGraph: () => ipcRenderer.invoke("memory-graph:get"),
+  searchMemoryGraph: (query, limit) => ipcRenderer.invoke("memory-graph:search", query, limit),
   chooseMemoryGraphFolder: () => ipcRenderer.invoke("memory-graph:choose-folder"),
   reindexMemoryGraph: () => ipcRenderer.invoke("memory-graph:reindex"),
   clearMemoryGraph: () => ipcRenderer.invoke("memory-graph:clear"),
   openMemoryGraphFolder: () => ipcRenderer.invoke("memory-graph:open-folder"),
+  onMemoryGraphProgress: (listener) => {
+    const handler = (_event, progress) => listener(progress);
+    ipcRenderer.on("memory-graph:progress", handler);
+    return () => ipcRenderer.removeListener("memory-graph:progress", handler);
+  },
+  getVoiceSettings: () => ipcRenderer.invoke("voice:get"),
+  configureVoice: (payload) => ipcRenderer.invoke("voice:configure", payload),
+  clearVoice: () => ipcRenderer.invoke("voice:clear"),
+  testVoice: () => ipcRenderer.invoke("voice:test"),
+  transcribeVoice: (payload) => ipcRenderer.invoke("voice:transcribe", payload),
+  synthesizeVoice: (payload) => ipcRenderer.invoke("voice:synthesize", payload),
   getSandboxStatus: () => ipcRenderer.invoke("sandbox:status"),
   verifyTaskProject: (taskId) => ipcRenderer.invoke("sandbox:verify", taskId),
   getTaskGitStatus: (taskId) => ipcRenderer.invoke("sandbox:git-status", taskId),

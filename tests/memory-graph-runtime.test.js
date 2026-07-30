@@ -4,7 +4,7 @@ const os = require("os");
 const path = require("path");
 const { createMemoryGraphRuntime } = require("../electron/memory-graph-runtime");
 
-function main() {
+async function main() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-memory-graph-"));
   try {
     const project = path.join(root, "project");
@@ -16,12 +16,17 @@ function main() {
     fs.writeFileSync(path.join(project, "node_modules", "ignored", "x.js"), "ignored", "utf8");
     const statePath = path.join(root, "graph.json");
     const runtime = createMemoryGraphRuntime({ statePath });
-    const graph = runtime.reindex(project);
+    const progress = [];
+    const graph = await runtime.reindex(project, (state) => progress.push(state.phase));
     assert.equal(graph.stats.files, 3);
     assert.ok(graph.stats.directories >= 2);
     assert.ok(graph.edges.some((edge) => edge.type === "references"));
     assert.ok(graph.nodes.some((node) => node.type === "concept"));
-    assert.equal(runtime.context().rootPath, path.resolve(project));
+    assert.equal(runtime.context("helper context").rootPath, path.resolve(project));
+    assert.equal(runtime.search("helper", 1)[0].label, "helper.js");
+    assert.ok(runtime.context("helper").files[0].path.includes("helper"));
+    assert.ok(progress.includes("scan") && progress.includes("complete"));
+    assert.ok(graph.diagnostics);
     assert.ok(fs.existsSync(statePath));
     assert.equal(createMemoryGraphRuntime({ statePath }).get().stats.files, 3);
     console.log("通过：文件夹扫描、引用关系、概念节点、忽略目录与长期持久化");

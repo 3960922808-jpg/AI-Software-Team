@@ -97,6 +97,10 @@ async function main() {
         importSkillDirectory: typeof window.desktop?.importPluginDirectory === 'function',
         mainCommandChat: Boolean(document.querySelector('#chat-candidates')) && typeof renderChatCandidates === 'function',
         memoryGraph: Boolean(document.querySelector('#memory-graph-canvas')) && typeof window.desktop?.getMemoryGraph === 'function',
+        memoryGraphSearch: typeof window.desktop?.searchMemoryGraph === 'function' && Boolean(document.querySelector('#memory-graph-fit')),
+        voiceBridge: typeof window.desktop?.configureVoice === 'function' && typeof window.desktop?.transcribeVoice === 'function' && typeof window.desktop?.synthesizeVoice === 'function',
+        voiceForm: Boolean(document.querySelector('#voice-settings-form')),
+        voiceButtons: document.querySelectorAll('.voice-record-button').length,
         updater: typeof window.desktop?.getUpdateStatus === 'function' && typeof window.desktop?.checkForUpdates === 'function',
         backButtons: document.querySelectorAll('[data-view-back]').length,
         agentRoutes: document.querySelectorAll('[data-settings-model-target]').length,
@@ -115,7 +119,8 @@ async function main() {
     assert.ok(initial.managerLeft < initial.firstAgentLeft);
     assert.equal(initial.managerBranches, 10);
     assert.ok(initial.chat && initial.modelSelect && initial.importSkill);
-    assert.ok(initial.importSkillDirectory && initial.mainCommandChat && initial.memoryGraph && initial.updater);
+    assert.ok(initial.importSkillDirectory && initial.mainCommandChat && initial.memoryGraph && initial.memoryGraphSearch && initial.updater);
+    assert.ok(initial.voiceBridge && initial.voiceForm && initial.voiceButtons === 2);
     assert.ok(initial.backButtons >= 10);
     assert.equal(initial.agentRoutes, 11);
     assert.equal(initial.integrationTest, true);
@@ -128,21 +133,30 @@ async function main() {
     const commandRouting = await client.evaluate(`(() => { const command = parseWorkflowChatCommand('@前端 Agent /界面实现 检查主界面'); return { target: command.targetAgent, skills: command.invokedSkills }; })()`);
     assert.equal(commandRouting.target, '前端 Agent');
     assert.ok(commandRouting.skills.includes('界面实现'));
+    await client.evaluate("activateView('memory'); true");
+    await delay(150);
     const graphSurface = await client.evaluate(`(() => {
       memoryGraphState = { rootPath:'C:\\\\demo', rootName:'demo', stats:{nodes:4,edges:3}, nodes:[
         {id:'root',type:'root',label:'demo',path:'.',keywords:[]}, {id:'src',type:'directory',label:'src',path:'src',keywords:[]},
         {id:'app',type:'file',label:'app.js',path:'src/app.js',extension:'.js',keywords:['agent'],summary:'Main agent runtime'},
         {id:'agent',type:'concept',label:'agent',path:'',keywords:['agent'],weight:2}
       ], edges:[{id:'e1',from:'root',to:'src',type:'contains'},{id:'e2',from:'src',to:'app',type:'contains'},{id:'e3',from:'app',to:'agent',type:'related'}] };
-      renderMemoryGraph(); drawMemoryGraph();
-      return { nodes:memoryGraphScene.nodes.length, edges:memoryGraphScene.edges.length, width:document.querySelector('#memory-graph-canvas').width, summary:document.querySelector('#memory-graph-summary').textContent };
+      renderMemoryGraph(); cancelAnimationFrame(memoryGraphScene.animationFrame);
+      memoryGraphScene.positions.get('app').x = 123; saveMemoryGraphLayout();
+      document.querySelector('#memory-graph-filter').value = 'concept'; buildMemoryGraphScene({layout:false});
+      const keptPosition = memoryGraphScene.positions.get('app').x;
+      focusMemoryNode('app'); fitMemoryGraph(); drawMemoryGraph();
+      return { nodes:memoryGraphScene.nodes.length, edges:memoryGraphScene.edges.length, width:document.querySelector('#memory-graph-canvas').width, summary:document.querySelector('#memory-graph-summary').textContent, keptPosition, selected:memoryGraphScene.selectedId, scale:memoryGraphScene.scale };
     })()`);
     assert.equal(graphSurface.nodes, 4);
     assert.equal(graphSurface.edges, 3);
-    assert.ok(graphSurface.width > 0);
+    assert.ok(graphSurface.width > 500);
     assert.match(graphSurface.summary, /4/);
+    assert.equal(graphSurface.keptPosition, 123);
+    assert.equal(graphSurface.selected, 'app');
+    assert.ok(graphSurface.scale > 0);
     const updaterStatus = await client.evaluate('window.desktop.getUpdateStatus()');
-    assert.equal(updaterStatus.currentVersion, '0.20.0');
+    assert.equal(updaterStatus.currentVersion, '0.21.0');
 
     const originalRoleValue = await client.evaluate("document.querySelector('#task-form [name=\"agent\"] option').value");
     await client.evaluate("window.AppI18n.setLanguage('en-US'); true");
@@ -219,6 +233,19 @@ async function main() {
     const mediaCleared = await client.evaluate("window.desktop.getMediaModels()");
     assert.equal(mediaCleared.image.configured, false);
     assert.equal(mediaCleared.video.configured, true);
+
+    await client.evaluate(`(() => {
+      const voice = document.querySelector('#voice-settings-form');
+      voice.asrProvider.value = 'custom'; voice.asrBaseUrl.value = 'https://voice.example/v1'; voice.asrModel.value = 'asr-smoke'; voice.asrApiKey.value = 'asr-smoke-key';
+      voice.ttsProvider.value = 'custom'; voice.ttsBaseUrl.value = 'https://speech.example/v1'; voice.ttsModel.value = 'tts-smoke'; voice.ttsApiKey.value = 'tts-smoke-key';
+      voice.voice.value = 'alloy'; voice.speed.value = '1.1'; voice.autoSpeak.checked = true; voice.requestSubmit(); return true;
+    })()`);
+    await delay(250);
+    const voiceSaved = await client.evaluate("window.desktop.getVoiceSettings()");
+    assert.equal(voiceSaved.configured, true);
+    assert.equal(voiceSaved.autoSpeak, true);
+    assert.equal(voiceSaved.asrModel, 'asr-smoke');
+    assert.equal(voiceSaved.ttsModel, 'tts-smoke');
 
     const selectedWorkspace = await client.evaluate(`(async () => { const result = await window.desktop.setWorkspace(${JSON.stringify(workspaceDirectory)}); setWorkspaceState(result.path); return { path: result.path, input: document.querySelector('#workspace-path').value }; })()`);
     assert.equal(selectedWorkspace.path, path.resolve(workspaceDirectory));

@@ -9,7 +9,8 @@ const storageKeys = {
   enabledSkills: "ai-software-team.enabled-skills",
   interfaceMode: "ai-software-team.interface-mode",
   workflowEditor: "ai-software-team.workflow-editor-v1",
-  workflowChat: "ai-software-team.workflow-chat-v1"
+  workflowChat: "ai-software-team.workflow-chat-v1",
+  memoryGraphLayout: "ai-software-team.memory-graph-layout-v2"
 };
 
 const roleAgents = [
@@ -103,7 +104,11 @@ let mediaModelState = { image: { configured: false }, video: { configured: false
 let sandboxPolicy = null;
 let pluginState = [];
 let memoryGraphState = { rootPath: "", stats: { nodes: 0, edges: 0 }, nodes: [], edges: [] };
-let memoryGraphScene = { positions: new Map(), nodes: [], edges: [], scale: 1, offsetX: 0, offsetY: 0, dragging: null, selectedId: null, frame: 0 };
+let memoryGraphScene = { positions: new Map(), nodes: [], edges: [], scale: 1, offsetX: 0, offsetY: 0, dragging: null, selectedId: null, frame: 0, initializedRoot: "", activeEdgeTypes: new Set(["contains", "references", "related"]) };
+let voiceState = { configured: false, autoSpeak: false, voice: "alloy", speed: 1 };
+let voiceRecorder = null;
+let voiceRecordingTarget = null;
+let activeVoiceAudio = null;
 let updateState = { status: "idle", currentVersion: "", latestVersion: "", progress: 0, settings: { autoCheck: true, autoDownload: true, installOnRestart: true } };
 let interfaceMode = loadJson(storageKeys.interfaceMode, "studio") === "workflow" ? "workflow" : "studio";
 let lastStudioView = "projects";
@@ -547,7 +552,7 @@ function renderChatCandidates() {
 function renderWorkflowChat() {
   const container = document.querySelector("#workflow-chat-messages");
   if (!container) return;
-  container.innerHTML = `<article class="assistant">使用 @ 指定经理或 Agent，使用 / 调用 Skill。</article>${workflowChatMessages.map((message) => `<article class="${message.role} ${message.pending ? "pending" : ""}"><small>${escapeHtml(message.label || (message.role === "user" ? "你" : "灵灵"))}</small><div>${formatChatContent(message.content)}</div></article>`).join("")}`;
+  container.innerHTML = `<article class="assistant">使用 @ 指定经理或 Agent，使用 / 调用 Skill。</article>${workflowChatMessages.map((message, index) => `<article class="${message.role} ${message.pending ? "pending" : ""}"><small>${escapeHtml(message.label || (message.role === "user" ? "你" : "灵灵"))}</small><div>${formatChatContent(message.content)}</div>${message.role === "assistant" && !message.pending ? chatSpeakButton("workflow", index) : ""}</article>`).join("")}`;
   container.scrollTop = container.scrollHeight;
 }
 
@@ -574,6 +579,7 @@ async function sendWorkflowChat(content) {
     if (!window.desktop?.chat) throw new Error("请先配置模型 API");
     const result = await window.desktop.chat({ messages: workflowChatMessages.filter((message) => !message.pending).map(({ role, content: text }) => ({ role, content: text })), context: getTeamContext(), targetAgent: command.targetAgent, invokedSkills: command.invokedSkills });
     workflowChatMessages[workflowChatMessages.length - 1] = { role: "assistant", content: result.content, label: command.targetLabel };
+    maybeAutoSpeak(result.content);
   } catch (error) {
     workflowChatMessages[workflowChatMessages.length - 1] = { role: "assistant", content: `执行失败：${error.message}`, label: command.targetLabel };
   }
@@ -873,35 +879,63 @@ function seededValue(value) {
   return (hash >>> 0) / 4294967295;
 }
 
-function buildMemoryGraphScene() {
-  const filter = document.querySelector("#memory-graph-filter")?.value || "all";
-  let nodes = memoryGraphState.nodes || [];
-  if (filter !== "all") nodes = nodes.filter((node) => node.type === filter || node.type === "root");
-  if (nodes.length > 360) {
-    const root = nodes.filter((node) => node.type === "root");
-    const directories = nodes.filter((node) => node.type === "directory").slice(0, 80);
-    const concepts = nodes.filter((node) => node.type === "concept").sort((a, b) => (b.weight || 0) - (a.weight || 0)).slice(0, 80);
-    const files = nodes.filter((node) => node.type === "file").slice(0, Math.max(0, 360 - root.length - directories.length - concepts.length));
-    nodes = [...root, ...directories, ...concepts, ...files];
-  }
-  const ids = new Set(nodes.map((node) => node.id));
-  memoryGraphScene.nodes = nodes;
-  memoryGraphScene.edges = (memoryGraphState.edges || []).filter((edge) => ids.has(edge.from) && ids.has(edge.to));
-  memoryGraphScene.positions = new Map();
-  nodes.forEach((node, index) => {
-    const angle = seededValue(node.id) * Math.PI * 2;
-    const jitter = seededValue(`${node.id}:radius`);
-    const radius = node.type === "root" ? 0 : node.type === "directory" ? 80 + jitter * 110 : node.type === "concept" ? 150 + jitter * 180 : 230 + jitter * 280;
-    memoryGraphScene.positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius * .72, vx: 0, vy: 0, fixed: false, index });
-  });
-  memoryGraphScene.scale = 1;
-  memoryGraphScene.offsetX = 0;
-  memoryGraphScene.offsetY = 0;
-  memoryGraphScene.frame = 0;
-  runMemoryGraphLayout();
+function storedMemoryGraphLayout() {
+  const stored = loadJson(storageKeys.memoryGraphLayout, null);
+  return stored?.rootPath === memoryGraphState.rootPath ? stored : null;
 }
 
-function runMemoryGraphLayout() {
+function saveMemoryGraphLayout() {
+  if (!memoryGraphState.rootPath) return;
+  const positions = {};
+  for (const [id, position] of memoryGraphScene.positions) positions[id] = [Math.round(position.x * 10) / 10, Math.round(position.y * 10) / 10];
+  localStorage.setItem(storageKeys.memoryGraphLayout, JSON.stringify({ rootPath: memoryGraphState.rootPath, positions, scale: memoryGraphScene.scale, offsetX: memoryGraphScene.offsetX, offsetY: memoryGraphScene.offsetY }));
+}
+
+function seedMemoryNodePosition(node, index) {
+  const angle = seededValue(node.id) * Math.PI * 2;
+  const jitter = seededValue(`${node.id}:radius`);
+  const radius = node.type === "root" ? 0 : node.type === "directory" ? 100 + jitter * 160 : node.type === "concept" ? 200 + jitter * 260 : 300 + jitter * 480;
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius * .72, vx: 0, vy: 0, fixed: node.type === "root", index };
+}
+
+function buildMemoryGraphScene(options = {}) {
+  const reset = Boolean(options.reset);
+  const rootChanged = memoryGraphScene.initializedRoot !== memoryGraphState.rootPath;
+  if (reset || rootChanged) {
+    cancelAnimationFrame(memoryGraphScene.animationFrame);
+    memoryGraphScene.positions = new Map();
+    memoryGraphScene.initializedRoot = memoryGraphState.rootPath;
+    const stored = reset ? null : storedMemoryGraphLayout();
+    for (const [index, node] of (memoryGraphState.nodes || []).entries()) {
+      const saved = stored?.positions?.[node.id];
+      memoryGraphScene.positions.set(node.id, saved ? { x: saved[0], y: saved[1], vx: 0, vy: 0, fixed: node.type === "root", index } : seedMemoryNodePosition(node, index));
+    }
+    memoryGraphScene.scale = stored?.scale || 1;
+    memoryGraphScene.offsetX = stored?.offsetX || 0;
+    memoryGraphScene.offsetY = stored?.offsetY || 0;
+    memoryGraphScene.autoFitAfterLayout = !stored;
+  } else {
+    for (const [index, node] of (memoryGraphState.nodes || []).entries()) if (!memoryGraphScene.positions.has(node.id)) memoryGraphScene.positions.set(node.id, seedMemoryNodePosition(node, index));
+  }
+
+  const filter = document.querySelector("#memory-graph-filter")?.value || "all";
+  const allNodes = memoryGraphState.nodes || [];
+  let visibleIds = new Set(allNodes.filter((node) => filter === "all" || node.type === filter || node.type === "root").map((node) => node.id));
+  if (filter !== "all") {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const edge of memoryGraphState.edges || []) if (edge.type === "contains" && visibleIds.has(edge.to) && !visibleIds.has(edge.from)) { visibleIds.add(edge.from); changed = true; }
+    }
+  }
+  memoryGraphScene.nodes = allNodes.filter((node) => visibleIds.has(node.id));
+  memoryGraphScene.edges = (memoryGraphState.edges || []).filter((edge) => visibleIds.has(edge.from) && visibleIds.has(edge.to) && memoryGraphScene.activeEdgeTypes.has(edge.type));
+  memoryGraphScene.frame = 0;
+  if (options.layout !== false && memoryGraphScene.nodes.length) runMemoryGraphLayout(rootChanged || reset ? 85 : 28);
+  else drawMemoryGraph();
+}
+
+function runMemoryGraphLayout(maxFrames = 70) {
   cancelAnimationFrame(memoryGraphScene.animationFrame);
   const step = () => {
     const positions = memoryGraphScene.positions;
@@ -909,29 +943,41 @@ function runMemoryGraphLayout() {
       const a = positions.get(edge.from); const b = positions.get(edge.to);
       if (!a || !b) continue;
       const dx = b.x - a.x; const dy = b.y - a.y; const distance = Math.max(1, Math.hypot(dx, dy));
-      const target = edge.type === "contains" ? 100 : edge.type === "references" ? 145 : 175;
-      const force = (distance - target) * .0018;
+      const target = edge.type === "contains" ? 105 : edge.type === "references" ? 155 : 190;
+      const force = (distance - target) * .0015 * (edge.strength || 1);
       if (!a.fixed) { a.vx += dx / distance * force; a.vy += dy / distance * force; }
       if (!b.fixed) { b.vx -= dx / distance * force; b.vy -= dy / distance * force; }
     }
     const nodes = memoryGraphScene.nodes;
-    for (let i = 0; i < nodes.length; i += 1) {
-      const a = positions.get(nodes[i].id);
-      if (!a || a.fixed) continue;
-      a.vx += -a.x * .00018; a.vy += -a.y * .00018;
-      for (let j = i + 1; j < nodes.length; j += 1) {
-        const b = positions.get(nodes[j].id); if (!b) continue;
-        const dx = b.x - a.x; const dy = b.y - a.y; const square = Math.max(64, dx * dx + dy * dy);
-        if (square > 14400) continue;
-        const force = 22 / square;
+    const grid = new Map();
+    const cellSize = 110;
+    for (const node of nodes) {
+      const position = positions.get(node.id); if (!position) continue;
+      const key = `${Math.floor(position.x / cellSize)}:${Math.floor(position.y / cellSize)}`;
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(node.id);
+    }
+    for (const node of nodes) {
+      const a = positions.get(node.id); if (!a || a.fixed) continue;
+      a.vx += -a.x * .00013; a.vy += -a.y * .00013;
+      const cellX = Math.floor(a.x / cellSize); const cellY = Math.floor(a.y / cellSize);
+      for (let ox = -1; ox <= 1; ox += 1) for (let oy = -1; oy <= 1; oy += 1) for (const otherId of grid.get(`${cellX + ox}:${cellY + oy}`) || []) {
+        if (otherId === node.id) continue;
+        const b = positions.get(otherId); if (!b) continue;
+        const dx = b.x - a.x; const dy = b.y - a.y; const square = Math.max(100, dx * dx + dy * dy);
+        if (square > 19600) continue;
+        const force = 28 / square;
         a.vx -= dx * force; a.vy -= dy * force;
-        if (!b.fixed) { b.vx += dx * force; b.vy += dy * force; }
       }
-      a.vx *= .82; a.vy *= .82; a.x += a.vx; a.y += a.vy;
+      a.vx *= .8; a.vy *= .8; a.x += a.vx; a.y += a.vy;
     }
     memoryGraphScene.frame += 1;
     drawMemoryGraph();
-    if (memoryGraphScene.frame < 100) memoryGraphScene.animationFrame = requestAnimationFrame(step);
+    if (memoryGraphScene.frame < maxFrames) memoryGraphScene.animationFrame = requestAnimationFrame(step);
+    else {
+      if (memoryGraphScene.autoFitAfterLayout) { memoryGraphScene.autoFitAfterLayout = false; fitMemoryGraph(); }
+      else saveMemoryGraphLayout();
+    }
   };
   memoryGraphScene.animationFrame = requestAnimationFrame(step);
 }
@@ -950,11 +996,14 @@ function drawMemoryGraph() {
   const centerX = width / 2 + offsetX; const centerY = height / 2 + offsetY;
   const search = (document.querySelector("#memory-graph-search")?.value || "").trim().toLowerCase();
   const matching = new Set(memoryGraphScene.nodes.filter((node) => !search || `${node.label} ${node.path} ${(node.keywords || []).join(" ")}`.toLowerCase().includes(search)).map((node) => node.id));
+  const labels = [];
   context.lineWidth = 1;
   for (const edge of memoryGraphScene.edges) {
     const from = positions.get(edge.from); const to = positions.get(edge.to); if (!from || !to) continue;
     context.beginPath(); context.moveTo(centerX + from.x * scale, centerY + from.y * scale); context.lineTo(centerX + to.x * scale, centerY + to.y * scale);
-    context.strokeStyle = search && !(matching.has(edge.from) || matching.has(edge.to)) ? "rgba(0,0,0,.035)" : edge.type === "references" ? "rgba(23,107,99,.34)" : edge.type === "related" ? "rgba(122,111,165,.22)" : "rgba(0,0,0,.12)";
+    const selectedEdge = memoryGraphScene.selectedId && (edge.from === memoryGraphScene.selectedId || edge.to === memoryGraphScene.selectedId);
+    context.strokeStyle = search && !(matching.has(edge.from) || matching.has(edge.to)) ? "rgba(0,0,0,.025)" : selectedEdge ? "rgba(0,0,0,.62)" : edge.type === "references" ? "rgba(23,107,99,.34)" : edge.type === "related" ? "rgba(122,111,165,.22)" : "rgba(0,0,0,.12)";
+    context.lineWidth = selectedEdge ? 1.8 : 1;
     context.stroke();
   }
   for (const node of memoryGraphScene.nodes) {
@@ -966,10 +1015,24 @@ function drawMemoryGraph() {
     context.beginPath(); context.arc(x, y, radius + (memoryGraphScene.selectedId === node.id ? 4 : 0), 0, Math.PI * 2);
     if (memoryGraphScene.selectedId === node.id) { context.fillStyle = "rgba(23,107,99,.18)"; context.fill(); context.beginPath(); context.arc(x, y, radius, 0, Math.PI * 2); }
     context.fillStyle = memoryNodeColor(node); context.fill();
-    if (scale > .7 && (node.type !== "file" || matching.has(node.id) || memoryGraphScene.nodes.length < 150)) {
-      context.font = `${node.type === "root" ? 11 : 9}px system-ui`; context.fillStyle = "#222"; context.textAlign = "center"; context.fillText(node.label.slice(0, 24), x, y + radius + 12);
+    if (scale > .62) {
+      const selected = memoryGraphScene.selectedId === node.id;
+      const eligible = selected || (search && matching.has(node.id)) || node.type === "root" || node.type === "directory" || (node.type === "concept" && (node.weight || 0) >= 3) || memoryGraphScene.nodes.length < 90;
+      if (eligible) labels.push({ node, x, y: y + radius + 12, priority: selected ? 1000 : search && matching.has(node.id) ? 800 : node.type === "root" ? 700 : node.type === "directory" ? 500 : node.type === "concept" ? 200 + (node.weight || 0) : 100 });
     }
     context.globalAlpha = 1;
+  }
+  const occupied = [];
+  for (const label of labels.sort((a, b) => b.priority - a.priority).slice(0, 120)) {
+    const text = label.node.label.slice(0, 24);
+    const fontSize = label.node.type === "root" ? 11 : 9;
+    const widthEstimate = Math.max(18, text.length * fontSize * (/[\u4e00-\u9fff]/.test(text) ? .95 : .58));
+    const rectangle = { left: label.x - widthEstimate / 2 - 3, right: label.x + widthEstimate / 2 + 3, top: label.y - fontSize - 3, bottom: label.y + 4 };
+    const forced = label.priority >= 700;
+    if (!forced && occupied.some((item) => rectangle.left < item.right && rectangle.right > item.left && rectangle.top < item.bottom && rectangle.bottom > item.top)) continue;
+    if (rectangle.right < 0 || rectangle.left > width || rectangle.bottom < 0 || rectangle.top > height) continue;
+    occupied.push(rectangle);
+    context.font = `${fontSize}px system-ui`; context.fillStyle = "#222"; context.textAlign = "center"; context.fillText(text, label.x, label.y);
   }
 }
 
@@ -980,6 +1043,17 @@ function renderMemoryGraph() {
   document.querySelector("#memory-graph-empty").hidden = Boolean(memoryGraphState.nodes?.length);
   document.querySelector("#memory-graph-open").disabled = !memoryGraphState.rootPath;
   document.querySelector("#memory-graph-reindex").disabled = !memoryGraphState.rootPath;
+  const diagnostics = memoryGraphState.diagnostics || {};
+  const diagnosticPanel = document.querySelector("#memory-graph-diagnostics");
+  const diagnosticsItems = [
+    diagnostics.isolatedNodes ? `孤立节点 ${diagnostics.isolatedNodes}` : "",
+    diagnostics.unresolvedReferences ? `失效引用 ${diagnostics.unresolvedReferences}` : "",
+    diagnostics.unreadableFiles ? `无法读取 ${diagnostics.unreadableFiles}` : "",
+    diagnostics.skippedLargeFiles ? `跳过大文件 ${diagnostics.skippedLargeFiles}` : "",
+    diagnostics.truncatedReason || ""
+  ].filter(Boolean);
+  diagnosticPanel.innerHTML = diagnosticsItems.map((item) => `<span>${escapeHtml(item)}</span>`).join("");
+  diagnosticPanel.hidden = !diagnosticsItems.length;
   buildMemoryGraphScene();
 }
 
@@ -987,10 +1061,9 @@ function setMemoryGraphLoading(visible, title = "正在构建长期记忆") {
   const layer = document.querySelector("#memory-graph-loading");
   layer.hidden = !visible;
   document.querySelector("#memory-graph-loading-title").textContent = title;
-  if (!visible) { clearInterval(memoryGraphScene.loadingTimer); return; }
-  let progress = 8;
-  document.querySelector("#memory-graph-loading-fill").style.width = `${progress}%`;
-  memoryGraphScene.loadingTimer = setInterval(() => { progress = Math.min(88, progress + Math.max(1, Math.round((90 - progress) / 7))); document.querySelector("#memory-graph-loading-fill").style.width = `${progress}%`; }, 180);
+  if (!visible) return;
+  document.querySelector("#memory-graph-loading-fill").style.width = "4%";
+  document.querySelector("#memory-graph-loading-detail").textContent = "正在准备目录扫描";
 }
 
 async function loadMemoryGraph() {
@@ -1015,8 +1088,55 @@ function showMemoryNode(node) {
   document.querySelector("#memory-node-path").textContent = node.path || memoryGraphState.rootPath;
   document.querySelector("#memory-node-summary").textContent = node.summary || (node.type === "concept" ? `由 ${node.weight || 0} 个文件共享的概念。` : "目录关系节点");
   document.querySelector("#memory-node-keywords").innerHTML = (node.keywords || []).map((keyword) => `<span>${escapeHtml(keyword)}</span>`).join("");
+  const nodesById = new Map((memoryGraphState.nodes || []).map((item) => [item.id, item]));
+  const neighbors = (memoryGraphState.edges || []).filter((edge) => edge.from === node.id || edge.to === node.id).slice(0, 18).map((edge) => ({ edge, node: nodesById.get(edge.from === node.id ? edge.to : edge.from) })).filter((item) => item.node);
+  document.querySelector("#memory-node-neighbors").innerHTML = neighbors.length ? neighbors.map(({ edge, node: neighbor }) => `<button type="button" data-memory-focus="${neighbor.id}"><span>${escapeHtml(neighbor.label)}</span><small>${edge.type === "contains" ? "包含" : edge.type === "references" ? "引用" : "概念"}</small></button>`).join("") : "<span>暂无关联节点</span>";
   document.querySelector("#memory-node-inspector").hidden = false;
   drawMemoryGraph();
+}
+
+function focusMemoryNode(nodeId, openInspector = true) {
+  const node = (memoryGraphState.nodes || []).find((item) => item.id === nodeId);
+  const position = memoryGraphScene.positions.get(nodeId);
+  if (!node || !position) return;
+  if (!memoryGraphScene.nodes.some((item) => item.id === nodeId)) {
+    document.querySelector("#memory-graph-filter").value = "all";
+    buildMemoryGraphScene({ layout: false });
+  }
+  memoryGraphScene.scale = Math.max(1.05, memoryGraphScene.scale);
+  memoryGraphScene.offsetX = -position.x * memoryGraphScene.scale;
+  memoryGraphScene.offsetY = -position.y * memoryGraphScene.scale;
+  memoryGraphScene.selectedId = nodeId;
+  if (openInspector) showMemoryNode(node); else drawMemoryGraph();
+  saveMemoryGraphLayout();
+}
+
+function fitMemoryGraph() {
+  const canvas = document.querySelector("#memory-graph-canvas");
+  const bounds = canvas.getBoundingClientRect();
+  const positions = memoryGraphScene.nodes.map((node) => memoryGraphScene.positions.get(node.id)).filter(Boolean);
+  if (!positions.length || bounds.width < 20 || bounds.height < 20) return;
+  const minX = Math.min(...positions.map((position) => position.x)); const maxX = Math.max(...positions.map((position) => position.x));
+  const minY = Math.min(...positions.map((position) => position.y)); const maxY = Math.max(...positions.map((position) => position.y));
+  memoryGraphScene.scale = Math.max(.28, Math.min(2.2, Math.min((bounds.width - 90) / Math.max(120, maxX - minX), (bounds.height - 90) / Math.max(120, maxY - minY))));
+  memoryGraphScene.offsetX = -(minX + maxX) / 2 * memoryGraphScene.scale;
+  memoryGraphScene.offsetY = -(minY + maxY) / 2 * memoryGraphScene.scale;
+  drawMemoryGraph(); saveMemoryGraphLayout();
+}
+
+let memorySearchSequence = 0;
+async function renderMemorySearchResults(query) {
+  const results = document.querySelector("#memory-search-results");
+  const normalized = String(query || "").trim();
+  drawMemoryGraph();
+  if (!normalized) { results.hidden = true; results.innerHTML = ""; return; }
+  const sequence = ++memorySearchSequence;
+  let matches = [];
+  try { matches = await window.desktop.searchMemoryGraph(normalized, 12); }
+  catch { matches = (memoryGraphState.nodes || []).filter((node) => `${node.label} ${node.path} ${(node.keywords || []).join(" ")}`.toLowerCase().includes(normalized.toLowerCase())).slice(0, 12); }
+  if (sequence !== memorySearchSequence) return;
+  results.innerHTML = matches.length ? matches.map((node) => `<button type="button" data-memory-focus="${node.id}"><b>${escapeHtml(node.label)}</b><small>${escapeHtml(node.path || node.type)}${node.relevance ? ` · 相关度 ${node.relevance}` : ""}</small></button>`).join("") : "<span class=\"memory-empty\">没有匹配节点</span>";
+  results.hidden = false;
 }
 function applyMediaProviderDefaults(kind) {
   const form = mediaForm(kind);
@@ -1071,6 +1191,136 @@ async function saveMediaModel(kind, form) {
   };
   mediaModelState = await window.desktop.configureMediaModel(kind, payload);
   renderMediaModel(kind);
+}
+
+const voiceProviderDefaults = {
+  asr: {
+    openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini-transcribe" },
+    groq: { baseUrl: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo" },
+    deepgram: { baseUrl: "https://api.deepgram.com/v1", model: "nova-3" },
+    custom: { baseUrl: "", model: "" }
+  },
+  tts: {
+    openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini-tts" },
+    custom: { baseUrl: "", model: "" }
+  }
+};
+
+function setVoiceFeedback(message, type = "") {
+  const feedback = document.querySelector("#voice-model-feedback");
+  feedback.textContent = message;
+  feedback.className = `model-save-feedback ${type}`.trim();
+}
+
+function applyVoiceProviderDefaults(kind) {
+  const form = document.querySelector("#voice-settings-form");
+  const provider = form[`${kind}Provider`].value;
+  const defaults = voiceProviderDefaults[kind][provider] || { baseUrl: "", model: "" };
+  form[`${kind}BaseUrl`].value = defaults.baseUrl;
+  form[`${kind}Model`].value = defaults.model;
+}
+
+function renderVoiceSettings() {
+  const form = document.querySelector("#voice-settings-form");
+  const badge = document.querySelector("#voice-connection-state");
+  badge.textContent = voiceState.configured ? `${voiceState.asrModel} / ${voiceState.ttsModel}` : "未配置";
+  badge.classList.toggle("connected", Boolean(voiceState.configured));
+  if (voiceState.configured) {
+    for (const field of ["asrProvider", "asrBaseUrl", "asrModel", "ttsProvider", "ttsBaseUrl", "ttsModel", "voice", "speed"]) if (voiceState[field] !== undefined) form[field].value = voiceState[field];
+    form.asrApiKey.value = ""; form.ttsApiKey.value = "";
+    form.asrApiKey.placeholder = "已安全保存，留空继续使用";
+    form.ttsApiKey.placeholder = "已安全保存，留空继续使用";
+  } else {
+    form.reset();
+    applyVoiceProviderDefaults("asr"); applyVoiceProviderDefaults("tts");
+  }
+  form.autoSpeak.checked = Boolean(voiceState.autoSpeak);
+  document.querySelector("#voice-speed-label").textContent = `${Number(form.speed.value || 1).toFixed(2)}×`;
+  renderChat(); renderWorkflowChat();
+}
+
+async function loadVoiceSettings() {
+  try {
+    voiceState = await window.desktop?.getVoiceSettings?.() || voiceState;
+    renderVoiceSettings();
+    if (voiceState.configured) setVoiceFeedback("语音配置已安全恢复，录音和朗读可以直接使用。", "success");
+  } catch (error) { setVoiceFeedback(`语音配置读取失败：${error.message}`, "error"); }
+}
+
+function stopVoicePlayback() {
+  if (activeVoiceAudio) { activeVoiceAudio.pause(); activeVoiceAudio.src = ""; activeVoiceAudio = null; }
+  document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = true; });
+}
+
+async function speakText(text) {
+  stopVoicePlayback();
+  if (!window.desktop?.synthesizeVoice) throw new Error("语音合成仅在 Electron 桌面版中可用");
+  if (!voiceState.ttsConfigured) throw new Error("请先在设置中配置语音合成 API");
+  const result = await window.desktop.synthesizeVoice({ text: String(text || "").slice(0, 12000) });
+  const blob = new Blob([result.audio], { type: result.mimeType || "audio/mpeg" });
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  activeVoiceAudio = audio;
+  document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = false; });
+  const cleanup = () => { if (activeVoiceAudio === audio) activeVoiceAudio = null; URL.revokeObjectURL(url); document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = true; }); };
+  audio.addEventListener("ended", cleanup, { once: true });
+  audio.addEventListener("error", cleanup, { once: true });
+  await audio.play();
+}
+
+function maybeAutoSpeak(text) {
+  if (voiceState.autoSpeak && voiceState.ttsConfigured) speakText(text).catch((error) => setVoiceFeedback(`自动朗读失败：${error.message}`, "error"));
+}
+
+function insertTranscript(input, transcript) {
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  const prefix = input.value.slice(0, start);
+  const separator = prefix && !/\s$/.test(prefix) ? " " : "";
+  input.value = `${prefix}${separator}${transcript}${input.value.slice(end)}`;
+  const cursor = prefix.length + separator.length + transcript.length;
+  input.setSelectionRange(cursor, cursor);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.focus();
+}
+
+function setRecordingButtonState(button, state) {
+  document.querySelectorAll(".voice-record-button").forEach((item) => { item.classList.remove("recording", "transcribing"); item.disabled = state === "transcribing"; item.textContent = "●"; item.title = "开始录音"; });
+  if (!button) return;
+  if (state === "recording") { button.classList.add("recording"); button.disabled = false; button.textContent = "■"; button.title = "停止并转写"; }
+  if (state === "transcribing") { button.classList.add("transcribing"); button.textContent = "…"; button.title = "正在转写"; }
+}
+
+async function toggleVoiceRecording(target) {
+  const button = document.querySelector(target === "workflow" ? "#workflow-voice-button" : "#chat-voice-button");
+  const input = document.querySelector(target === "workflow" ? "#workflow-chat-input" : "#chat-input");
+  if (voiceRecorder?.state === "recording") { voiceRecorder.stop(); return; }
+  if (!voiceState.asrConfigured) { setVoiceFeedback("请先在设置中配置语音识别 API。", "error"); activateView("settings"); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+    const mimeType = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"].find((type) => MediaRecorder.isTypeSupported(type)) || "";
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    voiceRecorder = recorder; voiceRecordingTarget = target;
+    recorder.addEventListener("dataavailable", (event) => { if (event.data.size) chunks.push(event.data); });
+    recorder.addEventListener("stop", async () => {
+      setRecordingButtonState(button, "transcribing");
+      stream.getTracks().forEach((track) => track.stop());
+      try {
+        const blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
+        const result = await window.desktop.transcribeVoice({ audio: await blob.arrayBuffer(), mimeType: blob.type || "audio/webm", language: uiLocale().startsWith("zh") ? "zh" : "en" });
+        insertTranscript(input, result.text);
+      } catch (error) { setVoiceFeedback(`语音识别失败：${error.message}`, "error"); }
+      finally { voiceRecorder = null; voiceRecordingTarget = null; setRecordingButtonState(null, "idle"); }
+    }, { once: true });
+    recorder.start(250);
+    setRecordingButtonState(button, "recording");
+    setTimeout(() => { if (voiceRecorder === recorder && recorder.state === "recording") recorder.stop(); }, 120000);
+  } catch (error) { setVoiceFeedback(`无法使用麦克风：${error.message}`, "error"); setRecordingButtonState(null, "idle"); }
+}
+
+function chatSpeakButton(scope, index) {
+  return voiceState.ttsConfigured ? `<button class="chat-speak-button" type="button" data-speak-scope="${scope}" data-speak-index="${index}" title="朗读回复" aria-label="朗读回复">▶</button>` : "";
 }
 
 function setModelPoolFeedback(message, type = "") {
@@ -1263,7 +1513,7 @@ function hideAgentMenu() { document.querySelector("#agent-context-menu").hidden 
 
 function renderChat() {
   const messages = document.querySelector("#chat-messages");
-  messages.innerHTML = `<article class="chat-message assistant"><p>告诉我你要交付什么。我可以分析问题，也可以创建任务并调用完整 Agent 团队执行。</p></article>${chatMessages.map((message, index) => `<article class="chat-message ${message.role} ${message.pending ? "pending" : ""}"><div>${formatChatContent(message.content)}</div>${message.action ? `<button class="chat-action-button" type="button" data-chat-action="${index}">${message.action.type === "create_and_execute" ? "创建并交给团队执行" : "创建任务"}</button>` : ""}</article>`).join("")}`;
+  messages.innerHTML = `<article class="chat-message assistant"><p>告诉我你要交付什么。我可以分析问题，也可以创建任务并调用完整 Agent 团队执行。</p></article>${chatMessages.map((message, index) => `<article class="chat-message ${message.role} ${message.pending ? "pending" : ""}"><div>${formatChatContent(message.content)}</div>${message.action ? `<button class="chat-action-button" type="button" data-chat-action="${index}">${message.action.type === "create_and_execute" ? "创建并交给团队执行" : "创建任务"}</button>` : ""}${message.role === "assistant" && !message.pending ? chatSpeakButton("main", index) : ""}</article>`).join("")}`;
   messages.scrollTop = messages.scrollHeight;
 }
 async function sendChat(content) {
@@ -1274,6 +1524,7 @@ async function sendChat(content) {
     if (!window.desktop?.chat) throw new Error("请先使用 Electron 桌面版并配置模型 API");
     const result = await window.desktop.chat({ messages: chatMessages.filter((message) => !message.pending).map(({ role, content: text }) => ({ role, content: text })), context: getTeamContext(), targetAgent: command.targetAgent, invokedSkills: command.invokedSkills });
     chatMessages[chatMessages.length - 1] = { role: "assistant", content: result.content, action: result.action, label: command.targetLabel };
+    maybeAutoSpeak(result.content);
   } catch (error) { chatMessages[chatMessages.length - 1] = { role: "assistant", content: `暂时无法回答：${error.message}`, label: command.targetLabel }; }
   renderChat();
 }
@@ -1796,6 +2047,47 @@ document.querySelectorAll("[data-media-kind]").forEach((form) => {
   });
 });
 
+const voiceForm = document.querySelector("#voice-settings-form");
+function voiceFormPayload() {
+  const data = new FormData(voiceForm);
+  return {
+    asrProvider: data.get("asrProvider"), asrBaseUrl: data.get("asrBaseUrl"), asrModel: data.get("asrModel"), asrApiKey: String(data.get("asrApiKey") || "").trim(),
+    ttsProvider: data.get("ttsProvider"), ttsBaseUrl: data.get("ttsBaseUrl"), ttsModel: data.get("ttsModel"), ttsApiKey: String(data.get("ttsApiKey") || "").trim(),
+    voice: data.get("voice"), speed: Number(data.get("speed")), autoSpeak: data.get("autoSpeak") === "on"
+  };
+}
+voiceForm.asrProvider.addEventListener("change", () => applyVoiceProviderDefaults("asr"));
+voiceForm.ttsProvider.addEventListener("change", () => applyVoiceProviderDefaults("tts"));
+voiceForm.speed.addEventListener("input", () => { document.querySelector("#voice-speed-label").textContent = `${Number(voiceForm.speed.value).toFixed(2)}×`; });
+voiceForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = voiceForm.querySelector('button[type="submit"]');
+  button.disabled = true; button.textContent = "保存中"; setVoiceFeedback("正在加密并保存语音模型配置…");
+  try { voiceState = await window.desktop.configureVoice(voiceFormPayload()); renderVoiceSettings(); setVoiceFeedback("语音配置已保存，主界面和工作流均可录音与朗读。", "success"); }
+  catch (error) { setVoiceFeedback(`保存失败：${error.message}`, "error"); }
+  finally { button.disabled = false; button.textContent = "保存语音配置"; }
+});
+document.querySelector("#clear-voice-button").addEventListener("click", async () => {
+  try { stopVoicePlayback(); voiceState = await window.desktop.clearVoice(); renderVoiceSettings(); setVoiceFeedback("已清除本机语音配置。", "success"); }
+  catch (error) { setVoiceFeedback(`清除失败：${error.message}`, "error"); }
+});
+document.querySelector("#test-voice-button").addEventListener("click", async () => {
+  const button = document.querySelector("#test-voice-button"); button.disabled = true; button.textContent = "测试中";
+  try { voiceState = await window.desktop.configureVoice(voiceFormPayload()); renderVoiceSettings(); await speakText("语音连接测试成功，智能体已经可以朗读回复。"); setVoiceFeedback("测试成功，已播放测试语音。", "success"); }
+  catch (error) { setVoiceFeedback(`测试失败：${error.message}`, "error"); }
+  finally { button.disabled = false; button.textContent = "测试朗读"; }
+});
+document.querySelector("#chat-voice-button").addEventListener("click", () => toggleVoiceRecording("main"));
+document.querySelector("#workflow-voice-button").addEventListener("click", () => toggleVoiceRecording("workflow"));
+document.querySelectorAll("[data-stop-voice]").forEach((button) => button.addEventListener("click", stopVoicePlayback));
+document.addEventListener("click", (event) => {
+  const speakButton = event.target.closest("[data-speak-scope]");
+  if (!speakButton) return;
+  const messages = speakButton.dataset.speakScope === "workflow" ? workflowChatMessages : chatMessages;
+  const message = messages[Number(speakButton.dataset.speakIndex)];
+  if (message?.content) speakText(message.content).catch((error) => setVoiceFeedback(`朗读失败：${error.message}`, "error"));
+});
+
 const memoryDialog = document.querySelector("#memory-dialog");
 document.querySelector("#new-memory-button").addEventListener("click", () => memoryDialog.showModal());
 document.querySelector("#memory-form").addEventListener("submit", (event) => { event.preventDefault(); const data = new FormData(event.currentTarget); memories.unshift({ id: crypto.randomUUID(), title: data.get("title").trim(), content: data.get("content").trim(), type: data.get("type"), createdAt: new Date().toISOString() }); saveMemory(); renderMemory(); renderWorkflow(); event.currentTarget.reset(); memoryDialog.close(); });
@@ -1808,8 +2100,20 @@ document.querySelector("#knowledge-file-input").addEventListener("change", async
 document.querySelector("#memory-graph-choose").addEventListener("click", () => chooseOrReindexMemoryGraph(true));
 document.querySelector("#memory-graph-reindex").addEventListener("click", () => chooseOrReindexMemoryGraph(false));
 document.querySelector("#memory-graph-open").addEventListener("click", async () => { try { await window.desktop.openMemoryGraphFolder(); } catch (error) { document.querySelector("#memory-graph-path").textContent = `无法打开文件夹：${error.message}`; } });
-document.querySelector("#memory-graph-search").addEventListener("input", drawMemoryGraph);
+document.querySelector("#memory-graph-search").addEventListener("input", (event) => renderMemorySearchResults(event.target.value));
 document.querySelector("#memory-graph-filter").addEventListener("change", buildMemoryGraphScene);
+document.querySelectorAll("[data-memory-edge]").forEach((control) => control.addEventListener("change", () => {
+  memoryGraphScene.activeEdgeTypes = new Set([...document.querySelectorAll("[data-memory-edge]:checked")].map((item) => item.dataset.memoryEdge));
+  buildMemoryGraphScene({ layout: false });
+}));
+document.querySelector("#memory-graph-fit").addEventListener("click", fitMemoryGraph);
+document.querySelector("#memory-graph-reset").addEventListener("click", () => { localStorage.removeItem(storageKeys.memoryGraphLayout); buildMemoryGraphScene({ reset: true }); setTimeout(fitMemoryGraph, 900); });
+document.querySelector(".memory-graph-section").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-memory-focus]");
+  if (!button) return;
+  focusMemoryNode(button.dataset.memoryFocus);
+  document.querySelector("#memory-search-results").hidden = true;
+});
 document.querySelector("#memory-node-close").addEventListener("click", () => { document.querySelector("#memory-node-inspector").hidden = true; memoryGraphScene.selectedId = null; drawMemoryGraph(); });
 const memoryCanvas = document.querySelector("#memory-graph-canvas");
 function memoryPointerPosition(event) {
@@ -1833,11 +2137,38 @@ memoryCanvas.addEventListener("pointermove", (event) => {
 memoryCanvas.addEventListener("pointerup", (event) => {
   const dragging = memoryGraphScene.dragging; if (!dragging) return;
   if (dragging.kind === "node" && !dragging.moved) showMemoryNode(memoryGraphScene.nodes.find((node) => node.id === dragging.id));
+  if (dragging.kind === "node") { const position = memoryGraphScene.positions.get(dragging.id); if (position) position.fixed = memoryGraphScene.nodes.find((node) => node.id === dragging.id)?.type === "root"; }
   memoryGraphScene.dragging = null; memoryCanvas.classList.remove("dragging");
   try { memoryCanvas.releasePointerCapture(event.pointerId); } catch { /* 指针捕获可能已经被系统释放。 */ }
+  saveMemoryGraphLayout();
 });
-memoryCanvas.addEventListener("wheel", (event) => { event.preventDefault(); memoryGraphScene.scale = Math.max(.35, Math.min(2.4, memoryGraphScene.scale * (event.deltaY > 0 ? .9 : 1.1))); drawMemoryGraph(); }, { passive: false });
+function cancelMemoryPointer() {
+  const dragging = memoryGraphScene.dragging;
+  if (dragging?.kind === "node") { const position = memoryGraphScene.positions.get(dragging.id); if (position) position.fixed = memoryGraphScene.nodes.find((node) => node.id === dragging.id)?.type === "root"; }
+  memoryGraphScene.dragging = null; memoryCanvas.classList.remove("dragging");
+}
+memoryCanvas.addEventListener("pointercancel", cancelMemoryPointer);
+memoryCanvas.addEventListener("lostpointercapture", () => { if (memoryGraphScene.dragging) cancelMemoryPointer(); });
+window.addEventListener("blur", cancelMemoryPointer);
+memoryCanvas.addEventListener("wheel", (event) => {
+  event.preventDefault();
+  const bounds = memoryCanvas.getBoundingClientRect();
+  const point = memoryPointerPosition(event);
+  const nextScale = Math.max(.28, Math.min(2.8, memoryGraphScene.scale * (event.deltaY > 0 ? .9 : 1.1)));
+  const screenX = event.clientX - bounds.left - bounds.width / 2; const screenY = event.clientY - bounds.top - bounds.height / 2;
+  memoryGraphScene.scale = nextScale;
+  memoryGraphScene.offsetX = screenX - point.x * nextScale;
+  memoryGraphScene.offsetY = screenY - point.y * nextScale;
+  drawMemoryGraph(); saveMemoryGraphLayout();
+}, { passive: false });
 new ResizeObserver(() => drawMemoryGraph()).observe(document.querySelector("#memory-graph-stage"));
+window.desktop?.onMemoryGraphProgress?.((progress) => {
+  const phaseBase = { scan: 8, parse: 38, complete: 100 }[progress.phase] ?? 10;
+  const phaseRange = { scan: 30, parse: 55, complete: 0 }[progress.phase] ?? 10;
+  const ratio = progress.total ? Math.min(1, progress.current / progress.total) : 0;
+  document.querySelector("#memory-graph-loading-fill").style.width = `${Math.round(phaseBase + phaseRange * ratio)}%`;
+  document.querySelector("#memory-graph-loading-detail").textContent = progress.message || "正在分析知识关系";
+});
 
 document.querySelectorAll("#update-auto-check,#update-auto-download,#update-install-restart").forEach((control) => control.addEventListener("change", async () => {
   try { renderUpdateState(await window.desktop.setUpdateSettings({ autoCheck: document.querySelector("#update-auto-check").checked, autoDownload: document.querySelector("#update-auto-download").checked, installOnRestart: document.querySelector("#update-install-restart").checked })); }
@@ -1866,6 +2197,7 @@ document.addEventListener("app-language-change", () => {
   renderWorkflowChat();
   renderModelPool();
   renderPlugins();
+  renderVoiceSettings();
   render();
   queueMicrotask(() => window.AppI18n?.refresh());
 });
@@ -1873,6 +2205,6 @@ document.addEventListener("app-language-change", () => {
 if (!window.WorkflowState?.templates?.[workflowEditorState.activeMode]) workflowEditorState.activeMode = "software";
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.workflowMode === workflowEditorState.activeMode));
 selectedWorkflowNodeId = window.WorkflowState?.templates?.[workflowEditorState.activeMode]?.nodes.find((node) => node.manager)?.id || "commander";
-installViewBackButtons(); loadModelSettings(); loadMediaModels(); loadModelPool(); loadPlugins(); loadMemoryGraph(); loadUpdateState(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
+installViewBackButtons(); loadModelSettings(); loadMediaModels(); loadVoiceSettings(); loadModelPool(); loadPlugins(); loadMemoryGraph(); loadUpdateState(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));
