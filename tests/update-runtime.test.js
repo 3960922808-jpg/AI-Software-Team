@@ -20,6 +20,11 @@ async function main() {
     assert.equal(checked.status, "available");
     assert.equal(runtime.setSettings({ autoDownload: false }).settings.autoDownload, false);
     assert.ok(fs.existsSync(path.join(root, "update-settings.json")));
+    fs.writeFileSync(path.join(root, "update-state.json"), JSON.stringify({ currentVersion: "0.19.0", latestVersion: "0.20.0", status: "ready", downloaded: true, readyToInstall: true, packageRoot: "stale-package" }), "utf8");
+    const updatedRuntime = createUpdateRuntime({ currentVersion: "0.20.0", userDataPath: root, fetchImpl: fakeFetch });
+    assert.equal(updatedRuntime.status().currentVersion, "0.20.0");
+    assert.equal(updatedRuntime.status().readyToInstall, false);
+    assert.equal(updatedRuntime.status().status, "idle");
     console.log("通过：语义版本比较、Release 资源选择、更新检查与设置持久化");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 }

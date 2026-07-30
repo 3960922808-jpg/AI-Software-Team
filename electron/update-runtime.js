@@ -109,7 +109,10 @@ function createUpdateRuntime({ currentVersion, userDataPath, installPath, execut
   const settingsPath = path.join(userDataPath, "update-settings.json");
   const statePath = path.join(userDataPath, "update-state.json");
   let settings = normalizeSettings(readJson(settingsPath, {}));
-  let state = { status: "idle", currentVersion, latestVersion: currentVersion, releaseUrl: "", releaseNotes: "", progress: 0, downloaded: false, readyToInstall: false, error: "", checkedAt: null, ...readJson(statePath, {}) };
+  const persistedState = readJson(statePath, {});
+  const installedPendingVersion = persistedState.readyToInstall && parseVersion(persistedState.latestVersion) && compareVersions(currentVersion, persistedState.latestVersion) >= 0;
+  let state = { status: "idle", latestVersion: currentVersion, releaseUrl: "", releaseNotes: "", progress: 0, downloaded: false, readyToInstall: false, error: "", checkedAt: null, ...persistedState, currentVersion };
+  if (installedPendingVersion) state = { ...state, status: "idle", available: false, downloaded: false, readyToInstall: false, packageRoot: "", zipPath: "", progress: 0, error: "" };
   const listeners = new Set();
 
   function emit(patch) {
