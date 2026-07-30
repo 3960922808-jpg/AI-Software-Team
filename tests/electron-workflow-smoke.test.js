@@ -23,6 +23,18 @@ async function waitForPage() {
   throw new Error("Electron 主界面未在限定时间内启动");
 }
 
+async function waitForPetPage() {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    try {
+      const pages = await fetch(`http://127.0.0.1:${port}/json`).then((response) => response.json());
+      const page = pages.find((item) => item.type === "page" && item.url.endsWith("/pet.html"));
+      if (page) return page;
+    } catch {}
+    await delay(250);
+  }
+  throw new Error("灵灵桌宠页面未在限定时间内启动");
+}
+
 class CdpClient {
   constructor(url) {
     this.nextId = 1;
@@ -58,18 +70,24 @@ class CdpClient {
 async function main() {
   const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
   assert.equal(appSource.includes("event.currentTarget.apiKey"), false);
+  for (const petFile of ["pet.html", "pet.css", "pet.js", "electron/pet-preload.js"]) assert.ok(fs.existsSync(path.join(root, petFile)), `缺少桌宠文件：${petFile}`);
   const cleanupDefault = process.env.SMOKE_CLEAN_DEFAULT === "1";
   const userData = cleanupDefault ? null : fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-electron-smoke-"));
   const workspaceDirectory = cleanupDefault ? null : fs.mkdtempSync(path.join(os.tmpdir(), "ai-team-artifacts-"));
+  const referenceImagePath = workspaceDirectory ? path.join(workspaceDirectory, "smoke-reference.png") : null;
+  if (referenceImagePath) fs.writeFileSync(referenceImagePath, Buffer.from("smoke-image"));
   const executable = process.env.SMOKE_EXECUTABLE || electron;
   const args = process.env.SMOKE_EXECUTABLE ? [`--remote-debugging-port=${port}`] : [root, `--remote-debugging-port=${port}`];
   if (userData) args.push(`--user-data-dir=${userData}`);
   const child = spawn(executable, args, { cwd: root, stdio: "ignore", env: { ...process.env, ELECTRON_DISABLE_SECURITY_WARNINGS: "true" } });
-  let client;
+  let client; let petClient;
   try {
     const page = await waitForPage();
     client = new CdpClient(page.webSocketDebuggerUrl);
     await client.open();
+    const petPage = await waitForPetPage();
+    petClient = new CdpClient(petPage.webSocketDebuggerUrl);
+    await petClient.open();
     for (let attempt = 0; attempt < 40; attempt += 1) {
       if (await client.evaluate("document.readyState === 'complete' && typeof applyInterfaceMode === 'function'")) break;
       await delay(100);
@@ -109,6 +127,10 @@ async function main() {
         mediaGet: typeof window.desktop?.getMediaModels === 'function',
         mediaConfigure: typeof window.desktop?.configureMediaModel === 'function',
         mediaExecute: typeof window.desktop?.executeMediaWorkflow === 'function',
+        mediaImagePicker: typeof window.desktop?.chooseMediaInputImage === 'function',
+        petBridge: typeof window.desktop?.onPetTask === 'function' && typeof window.desktop?.sendPetResponse === 'function' && typeof window.desktop?.setPetSpeaking === 'function',
+        linglingVoiceBars: document.querySelectorAll('#lingling-voice-bars i').length,
+        workflowModeDock: document.querySelectorAll('.workflow-mode-dock [data-workflow-mode]').length,
         knowledgeLibrary: typeof window.desktop?.importKnowledgeDocuments === 'function' && typeof window.desktop?.openKnowledgeDocument === 'function',
         computerAccess: typeof window.desktop?.getComputerAccess === 'function' && document.querySelectorAll('[data-computer-access]').length === 2,
         configurationVault: typeof window.desktop?.getConfigurationVault === 'function' && Boolean(document.querySelector('.configuration-vault')),
@@ -129,12 +151,18 @@ async function main() {
     assert.ok(initial.backButtons >= 10);
     assert.equal(initial.agentRoutes, 11);
     assert.equal(initial.integrationTest, true);
-    assert.ok(initial.mediaGet && initial.mediaConfigure && initial.mediaExecute);
+    assert.ok(initial.mediaGet && initial.mediaConfigure && initial.mediaExecute && initial.mediaImagePicker);
+    assert.ok(initial.petBridge && initial.linglingVoiceBars === 3 && initial.workflowModeDock === 3);
     assert.ok(initial.knowledgeLibrary && initial.computerAccess && initial.configurationVault);
     assert.ok(initial.imageModelForm && initial.videoModelForm);
     assert.equal(initial.languageControls, 2);
     assert.equal(initial.demoPanels, 0);
     assert.notEqual(initial.templateColor, initial.templateBackground);
+    const petSurface = await petClient.evaluate(`({ bars:document.querySelectorAll('#pet-voice-bars i').length, form:Boolean(document.querySelector('#pet-form')), bridge:typeof window.petDesktop?.submitTask==='function' && typeof window.petDesktop?.openMain==='function' && typeof window.petDesktop?.quit==='function', language:document.documentElement.lang })`);
+    assert.deepEqual(petSurface, { bars: 3, form: true, bridge: true, language: "zh-CN" });
+    const chosenReference = await client.evaluate(`window.desktop.chooseMediaInputImage(${JSON.stringify(referenceImagePath)})`);
+    assert.equal(chosenReference.filePath, path.resolve(referenceImagePath));
+    assert.match(chosenReference.previewDataUrl, /^data:image\/png;base64,/);
 
     const commandRouting = await client.evaluate(`(() => { const command = parseWorkflowChatCommand('@前端 Agent /界面实现 检查主界面'); return { target: command.targetAgent, skills: command.invokedSkills }; })()`);
     assert.equal(commandRouting.target, '前端 Agent');
@@ -198,6 +226,11 @@ async function main() {
     assert.match(englishLanguage.title, /Project Workspace/);
     assert.equal(englishLanguage.roleValue, originalRoleValue);
     assert.deepEqual(englishLanguage.residual, []);
+    await delay(120);
+    const petEnglish = await petClient.evaluate(`({ language:document.documentElement.lang, placeholder:document.querySelector('#pet-input').placeholder, open:document.querySelector('#pet-open-main').textContent })`);
+    assert.equal(petEnglish.language, "en-US");
+    assert.match(petEnglish.placeholder, /Tell Lingling/);
+    assert.equal(petEnglish.open, "Open full chat");
 
     await client.evaluate(`(() => {
       activateView('settings');
@@ -293,13 +326,13 @@ async function main() {
     assert.ok(dialogLayout.overflow <= 1);
     assert.ok(dialogLayout.aligned && dialogLayout.widths.every((width) => width > 150));
 
-    const managerRect = await client.evaluate(`(() => { const rect = document.querySelector('[data-workflow-node="commander"]').getBoundingClientRect(); return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }; })()`);
-    await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: managerRect.x, y: managerRect.y, button: "left", clickCount: 1 });
-    await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: managerRect.x + 36, y: managerRect.y + 24, button: "left" });
-    await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: managerRect.x + 36, y: managerRect.y + 24, button: "left", clickCount: 1 });
+    const dragTarget = await client.evaluate(`(() => { const node=currentWorkflow.nodes.find((item)=>item.id==='frontend'); const rect = document.querySelector('[data-workflow-node="frontend"]').getBoundingClientRect(); return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, nodeX:node.x, nodeY:node.y }; })()`);
+    await client.send("Input.dispatchMouseEvent", { type: "mousePressed", x: dragTarget.x, y: dragTarget.y, button: "left", buttons: 1, clickCount: 1 });
+    await client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: dragTarget.x + 36, y: dragTarget.y + 24, button: "left", buttons: 1 });
+    await client.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: dragTarget.x + 36, y: dragTarget.y + 24, button: "left", buttons: 0, clickCount: 1 });
     await delay(100);
-    const moved = await client.evaluate("JSON.parse(localStorage.getItem(storageKeys.workflowEditor)).modes.software.positions.commander");
-    assert.ok(Math.abs(moved.x - initial.managerLeft) + Math.abs(moved.y - initial.managerTop) > 10);
+    const moved = await client.evaluate("JSON.parse(localStorage.getItem(storageKeys.workflowEditor)).modes.software.positions.frontend");
+    assert.ok(Math.abs(moved.x - dragTarget.nodeX) + Math.abs(moved.y - dragTarget.nodeY) > 10);
 
     const customId = await client.evaluate(`(() => {
       const editor = getWorkflowModeState();
@@ -332,7 +365,9 @@ async function main() {
       const overlaps = rects.some((left,index) => rects.slice(index+1).some((right) => left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top));
       const visible = rects.every((rect) => rect.right >= viewport.left && rect.left <= viewport.right && rect.bottom >= viewport.top && rect.top <= viewport.bottom);
       const outside = rects.map((rect,index) => ({ id:currentWorkflow.nodes[index]?.id,left:Math.round(rect.left),right:Math.round(rect.right),top:Math.round(rect.top),bottom:Math.round(rect.bottom) })).filter((rect) => rect.right < viewport.left || rect.left > viewport.right || rect.bottom < viewport.top || rect.top > viewport.bottom);
-      return { mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length, width: currentWorkflow.template.width, height: currentWorkflow.template.height, ports: document.querySelectorAll('.media-port').length, libraryHidden: document.querySelector('#media-node-library').hidden, inspectorHidden: document.querySelector('#workflow-inspector').hidden, viewportHeight: viewport.height, windowHeight: innerHeight, viewport:{left:Math.round(viewport.left),right:Math.round(viewport.right),top:Math.round(viewport.top),bottom:Math.round(viewport.bottom)}, scale:workflowScale,transform:getComputedStyle(document.querySelector('#workflow-canvas')).transform,scrollLeft:document.querySelector('#workflow-viewport').scrollLeft,fullScreen: document.body.classList.contains('media-workflow-active'), sidebarHidden: getComputedStyle(document.querySelector('.sidebar')).display === 'none', overlaps, visible, outside };
+      const prompt = document.querySelector('[data-workflow-node="image-positive"] [data-media-parameter="prompt"]');
+      prompt.value = '桌宠在明亮的软件工作室中'; prompt.dispatchEvent(new Event('input',{bubbles:true}));
+      return { mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length, width: currentWorkflow.template.width, height: currentWorkflow.template.height, ports: document.querySelectorAll('.media-port').length, libraryHidden: document.querySelector('#media-node-library').hidden, inspectorHidden: document.querySelector('#workflow-inspector').hidden, viewportHeight: viewport.height, windowHeight: innerHeight, viewport:{left:Math.round(viewport.left),right:Math.round(viewport.right),top:Math.round(viewport.top),bottom:Math.round(viewport.bottom)}, scale:workflowScale,transform:getComputedStyle(document.querySelector('#workflow-canvas')).transform,scrollLeft:document.querySelector('#workflow-viewport').scrollLeft,fullScreen: document.body.classList.contains('media-workflow-active'), sidebarHidden: getComputedStyle(document.querySelector('.sidebar')).display === 'none', overlaps, visible, outside, promptInputs:document.querySelectorAll('.media-inline-field textarea').length, imageInputs:document.querySelectorAll('[data-media-image-choose]').length, connectVisible:getComputedStyle(document.querySelector('#workflow-connect')).display !== 'none', modelsVisible:getComputedStyle(document.querySelector('#workflow-models')).display !== 'none', dockVisible:getComputedStyle(document.querySelector('.workflow-mode-dock')).display !== 'none', savedPrompt:JSON.parse(localStorage.getItem(storageKeys.workflowEditor)).modes.image.nodeOverrides['image-positive'].parameters.prompt };
     })()`);
     assert.equal(imageMode.mode, "image");
     assert.ok(imageMode.manager && imageMode.edges > 0);
@@ -341,6 +376,9 @@ async function main() {
     assert.ok(imageMode.fullScreen && imageMode.sidebarHidden && imageMode.viewportHeight >= imageMode.windowHeight - 150, JSON.stringify(imageMode));
     assert.equal(imageMode.overlaps, false);
     assert.equal(imageMode.visible, true, JSON.stringify(imageMode));
+    assert.ok(imageMode.promptInputs >= 2 && imageMode.imageInputs >= 1);
+    assert.ok(imageMode.connectVisible && imageMode.modelsVisible && imageMode.dockVisible);
+    assert.equal(imageMode.savedPrompt, '桌宠在明亮的软件工作室中');
     const drawers = await client.evaluate(`(() => {
       document.querySelector('#media-library-toggle').click();
       const libraryOpen = !document.querySelector('#media-node-library').hidden;
@@ -363,7 +401,7 @@ async function main() {
     assert.match(persistedLanguage.title, /Project Workspace/);
     const mediaResidual = await client.evaluate(`(() => {
       const values = []; const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let node;
-      while ((node = walker.nextNode())) { if (!['SCRIPT','STYLE'].includes(node.parentElement?.tagName) && /[\u4e00-\u9fff]/.test(node.nodeValue || '')) values.push(node.nodeValue.trim()); }
+      while ((node = walker.nextNode())) { if (!['SCRIPT','STYLE'].includes(node.parentElement?.tagName) && !node.parentElement?.closest('[data-media-parameter]') && /[\u4e00-\u9fff]/.test(node.nodeValue || '')) values.push(node.nodeValue.trim()); }
       for (const element of document.querySelectorAll('*')) for (const attribute of ['placeholder','title','aria-label']) { const value=element.getAttribute(attribute)||''; if (/[\u4e00-\u9fff]/.test(value)) values.push(value); }
       return [...new Set(values)].filter(Boolean).slice(0,80);
     })()`);
@@ -378,6 +416,7 @@ async function main() {
       try { await client.send("Browser.close"); } catch {}
       client.close();
     }
+    if (petClient) petClient.close();
     await Promise.race([exited, delay(2000)]);
     if (child.exitCode === null) {
       child.kill();

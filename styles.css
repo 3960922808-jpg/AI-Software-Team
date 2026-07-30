@@ -465,6 +465,11 @@ body[data-interface-mode="workflow"] .sidebar-footer { margin-top:auto; }
 body.mode-switching { overflow:hidden; }
 
 .workflow-view { min-width:0; }
+.workflow-mode-dock { display:flex; align-items:center; gap:5px; width:max-content; max-width:100%; margin:0 0 9px; padding:4px; overflow-x:auto; border:1px solid rgba(0,0,0,.12); border-radius:8px; background:rgba(255,255,255,.78); box-shadow:0 8px 25px rgba(0,0,0,.06),inset 0 1px 0 #fff; backdrop-filter:blur(18px); }
+.workflow-mode-dock button { display:flex; align-items:center; gap:6px; min-height:32px; padding:6px 10px; border:1px solid transparent; border-radius:6px; background:transparent; box-shadow:none; color:#555; white-space:nowrap; }
+.workflow-mode-dock button span { color:#777; font-size:9px; }
+.workflow-mode-dock button b { font-size:10px; }
+.workflow-mode-dock button.active { border-color:#d6d6d6; background:rgba(255,255,255,.96); color:#111; box-shadow:0 3px 12px rgba(0,0,0,.08); }
 .workflow-topbar { padding-bottom:17px; border-bottom:1px solid #ddd; }
 .workflow-toolbar { display:flex; align-items:flex-end; justify-content:flex-end; gap:9px; flex-wrap:wrap; }
 .workflow-task-picker { min-width:250px; margin:0; gap:4px; color:#666; font-size:10px; }
@@ -890,6 +895,19 @@ body[data-interface-mode="workflow"] .sidebar nav { display:none; }
 .media-port.input { transform:translateX(-5px); }
 .media-port.output { transform:translateX(5px); }
 .workflow-node.media > p { margin:3px 11px 8px; color:#666; font-size:8px; line-height:1.45; overflow-wrap:anywhere; }
+.media-inline-field { display:grid; gap:5px; margin:6px 10px 8px; color:#555; font-size:8px; }
+.media-inline-field textarea { width:100%; min-height:92px; padding:8px 9px; resize:none; border:1px solid #d2d2d2; border-radius:5px; background:#fafafa; color:#111; font-size:10px; line-height:1.5; outline:none; }
+.media-inline-field textarea:focus { border-color:#777; background:#fff; box-shadow:0 0 0 3px rgba(0,0,0,.06); }
+.media-inline-image { display:grid; gap:5px; margin:4px 10px 8px; color:#555; font-size:8px; }
+.media-image-preview { display:grid; place-items:center; height:94px; overflow:hidden; border:1px dashed #bdbdbd; border-radius:5px; background:#f7f7f7; color:#777; }
+.media-image-preview b { font-size:22px; font-weight:400; line-height:1; }
+.media-image-preview small { font-size:8px; }
+.media-image-preview.has-image { border-style:solid; background:#eee; }
+.media-image-preview img { width:100%; height:100%; object-fit:contain; }
+.media-inline-image > p { margin:0; overflow:hidden; color:#555; font-size:8px; text-overflow:ellipsis; white-space:nowrap; }
+.media-inline-image > div:last-child { display:flex; gap:5px; }
+.media-inline-image button { min-height:26px; padding:5px 8px; border:1px solid #ccc; border-radius:5px; background:#fff; color:#222; box-shadow:none; font-size:8px; }
+.media-inline-image button:last-child { color:#9b3535; }
 .workflow-node.media > footer { display:flex; justify-content:space-between; padding:6px 10px; border-top:1px solid #eee; color:#888; font-size:7px; }
 .workflow-node.media.selected { border-color:#111; box-shadow:0 0 0 2px rgba(0,0,0,.13),0 13px 30px rgba(0,0,0,.14); }
 .workflow-link.custom,.workflow-link[data-workflow-edge^="image-edge"],.workflow-link[data-workflow-edge^="video-edge"] { animation:workflowFlow .9s linear infinite; stroke-dasharray:8 7; }
@@ -913,22 +931,26 @@ body[data-interface-mode="workflow"] .sidebar nav { display:none; }
 body.media-workflow-active { overflow:hidden; }
 body.media-workflow-active .app-shell { grid-template-columns:1fr; height:100vh; min-height:0; }
 body.media-workflow-active .sidebar { display:none; }
-body.media-workflow-active .workspace { width:100%; max-width:none; height:100vh; min-height:0; margin:0; padding:10px 12px 12px; overflow:hidden; }
+body.media-workflow-active .workspace { width:100%; max-width:none; height:100vh; min-height:0; margin:0; padding:6px 12px 8px; overflow:hidden; }
 body.media-workflow-active .workflow-view.active { display:flex; flex-direction:column; height:100%; min-height:0; }
-body.media-workflow-active .workflow-topbar { flex:0 0 auto; min-height:48px; padding:0 0 9px; }
+body.media-workflow-active .workflow-mode-dock { flex:0 0 auto; width:auto; margin-bottom:4px; padding:3px; }
+body.media-workflow-active .workflow-mode-dock button { min-height:27px; padding:4px 9px; }
+body.media-workflow-active .workflow-topbar { flex:0 0 auto; min-height:38px; padding:0 0 5px; }
 body.media-workflow-active .workflow-topbar .eyebrow { display:none; }
 body.media-workflow-active .workflow-topbar h1 { font-size:18px; }
 body.media-workflow-active .workflow-topbar .view-back-button { width:32px; height:32px; flex-basis:32px; }
-body.media-workflow-active .workflow-toolbar { gap:6px; flex-wrap:nowrap; }
+body.media-workflow-active .workflow-toolbar { min-width:0; gap:6px; flex-wrap:nowrap; overflow-x:auto; padding:2px 0 4px; scrollbar-width:thin; }
+body.media-workflow-active .workflow-toolbar > * { flex:0 0 auto; }
 body.media-workflow-active .workflow-toolbar > button { min-height:34px; padding:7px 10px; }
 body.media-workflow-active .media-toolbar-button:not([hidden]) { display:inline-flex; }
 body.media-workflow-active #workflow-add-node { display:none; }
 body.media-workflow-active .workflow-summary { display:none; }
-body.media-workflow-active .workflow-layout { position:relative; display:block; flex:1 1 auto; min-height:0; padding-top:8px; }
-body.media-workflow-active .workflow-canvas-panel.media { position:relative; height:100%; min-height:0; grid-template-rows:40px minmax(0,1fr); border-radius:6px; }
+body.media-workflow-active .workflow-layout { position:relative; display:block; flex:1 1 auto; min-height:0; padding-top:4px; }
+body.media-workflow-active .workflow-canvas-panel.media { position:relative; height:100%; min-height:0; grid-template-rows:34px minmax(0,1fr); border-radius:6px; }
 body.media-workflow-active .workflow-viewport.media { height:auto; min-height:0; }
 body.media-workflow-active .workflow-legend { display:none; }
-body.media-workflow-active .workflow-layers { min-height:40px; }
+body.media-workflow-active .workflow-layers { min-height:34px; }
+body.media-workflow-active .workflow-layers span { padding:7px 10px; }
 body.media-workflow-active .workflow-layers b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 body.media-workflow-active .media-node-library,
@@ -959,8 +981,16 @@ body.media-workflow-active .workflow-node.media { transition:border-color .18s,b
 body.media-workflow-active .workflow-node.media:hover { transform:translateY(-2px); }
 
 @media (max-width:900px) {
-  body.media-workflow-active .workflow-topbar { align-items:flex-start; }
-  body.media-workflow-active .workflow-toolbar { justify-content:flex-end; flex-wrap:wrap; }
-  body.media-workflow-active #workflow-connect,body.media-workflow-active #workflow-models { display:none; }
+  body.media-workflow-active .workflow-topbar { align-items:flex-start; gap:8px; }
+  body.media-workflow-active .workflow-toolbar { width:100%; justify-content:flex-start; flex-wrap:nowrap; }
   body.media-workflow-active .workflow-zoom span { width:40px; }
 }
+
+/* 灵灵与桌宠共用的语音状态。 */
+.lingling-voice-bars { position:absolute; z-index:15; top:-28px; left:50%; display:flex; align-items:center; justify-content:center; gap:4px; width:42px; height:28px; transform:translateX(-50%); border:1px solid rgba(22,122,91,.2); border-radius:15px; background:rgba(255,255,255,.92); box-shadow:0 7px 20px rgba(22,122,91,.16); opacity:0; pointer-events:none; transition:opacity .2s,transform .2s; }
+.lingling-voice-bars i { display:block; width:4px; height:10px; border-radius:4px; background:#20a56e; }
+.manager-character.speaking .lingling-voice-bars { opacity:1; transform:translateX(-50%) translateY(-3px); }
+.manager-character.speaking .lingling-voice-bars i { animation:linglingVoiceBar .62s ease-in-out infinite alternate; }
+.manager-character.speaking .lingling-voice-bars i:nth-child(2) { height:18px; animation-delay:-.31s; }
+.manager-character.speaking .lingling-voice-bars i:nth-child(3) { height:13px; animation-delay:-.16s; }
+@keyframes linglingVoiceBar { from { transform:scaleY(.45); } to { transform:scaleY(1.12); } }

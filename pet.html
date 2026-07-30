@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'" />
+  <title>灵灵桌宠</title>
+  <link rel="stylesheet" href="pet.css" />
+</head>
+<body>
+  <main class="pet-shell" id="pet-shell">
+    <section class="pet-bubble" id="pet-bubble" hidden>
+      <header><strong>灵灵</strong><button id="pet-collapse" type="button" title="收起" aria-label="收起">×</button></header>
+      <p id="pet-message">把任务告诉我，我会先分析，再决定交给哪位 Agent。</p>
+      <form id="pet-form">
+        <textarea id="pet-input" maxlength="2000" placeholder="告诉灵灵要完成什么…" required></textarea>
+        <footer><span id="pet-state">等待任务</span><button type="submit">发送任务</button></footer>
+      </form>
+      <div class="pet-window-actions"><button class="open-main" id="pet-open-main" type="button">打开完整对话</button><button class="quit-pet" id="pet-quit" type="button">退出软件</button></div>
+    </section>
+    <button class="pet-character" id="pet-character" type="button" aria-label="打开灵灵桌宠对话">
+      <span class="voice-bars" id="pet-voice-bars" aria-label="灵灵正在说话"><i></i><i></i><i></i></span>
+      <img src="assets/agents/manager.png" alt="灵灵" draggable="false" />
+      <b>灵灵</b>
+      <small id="pet-presence">在线</small>
+    </button>
+  </main>
+  <script src="pet.js"></script>
+</body>
+</html>

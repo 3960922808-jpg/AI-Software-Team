@@ -1,0 +1,37 @@
+:root { color-scheme:light; font-family:"Microsoft YaHei","Segoe UI",sans-serif; }
+* { box-sizing:border-box; }
+html,body { width:100%; height:100%; margin:0; overflow:hidden; background:transparent; }
+button,textarea { font:inherit; }
+.pet-shell { position:relative; width:100%; height:100%; }
+.pet-character { position:absolute; right:8px; bottom:5px; width:116px; height:142px; padding:0; border:0; background:transparent; color:#111; cursor:pointer; -webkit-app-region:no-drag; }
+.pet-character img { display:block; width:106px; height:108px; margin:0 auto; object-fit:contain; filter:drop-shadow(0 6px 4px rgba(0,0,0,.18)); transform-origin:50% 100%; animation:petIdle 2.8s cubic-bezier(.45,0,.55,1) infinite; }
+.pet-character b { display:inline-block; min-width:58px; margin-top:-3px; padding:4px 9px; border:1px solid rgba(0,0,0,.12); border-radius:7px; background:rgba(255,255,255,.9); box-shadow:0 5px 16px rgba(0,0,0,.09); font-size:11px; }
+.pet-character small { position:absolute; right:2px; bottom:13px; padding:3px 5px; border-radius:5px; background:#167a5b; color:#fff; font-size:8px; font-weight:700; }
+.voice-bars { position:absolute; z-index:5; top:-2px; left:50%; display:flex; align-items:center; justify-content:center; gap:4px; width:42px; height:29px; transform:translateX(-50%); border:1px solid rgba(22,122,91,.18); border-radius:15px; background:rgba(255,255,255,.88); box-shadow:0 6px 18px rgba(22,122,91,.15); opacity:0; transition:opacity .2s; }
+.voice-bars i { display:block; width:4px; height:10px; border-radius:4px; background:#20a56e; }
+body.speaking .voice-bars { opacity:1; }
+body.speaking .voice-bars i { animation:voiceBar .64s ease-in-out infinite alternate; }
+body.speaking .voice-bars i:nth-child(2) { height:18px; animation-delay:-.32s; }
+body.speaking .voice-bars i:nth-child(3) { height:13px; animation-delay:-.16s; }
+.pet-bubble { position:absolute; z-index:10; top:8px; left:8px; width:224px; padding:11px; border:1px solid rgba(0,0,0,.14); border-radius:8px; background:rgba(255,255,255,.96); box-shadow:0 16px 42px rgba(0,0,0,.18); backdrop-filter:blur(22px); -webkit-app-region:no-drag; animation:bubbleIn .24s cubic-bezier(.22,1,.36,1) both; }
+.pet-bubble::after { content:""; position:absolute; right:-7px; bottom:31px; width:12px; height:12px; transform:rotate(45deg); border-top:1px solid rgba(0,0,0,.14); border-right:1px solid rgba(0,0,0,.14); background:#fff; }
+.pet-bubble[hidden] { display:none; }
+.pet-bubble header { display:flex; align-items:center; justify-content:space-between; }
+.pet-bubble header strong { font-size:12px; }
+.pet-bubble header button { width:25px; height:25px; padding:0; border:1px solid #ddd; border-radius:50%; background:#fff; color:#555; cursor:pointer; }
+.pet-bubble p { max-height:76px; overflow:auto; margin:8px 0; color:#444; font-size:10px; line-height:1.55; }
+.pet-bubble textarea { width:100%; min-height:55px; max-height:78px; resize:none; padding:7px 8px; border:1px solid #d3d3d3; border-radius:6px; outline:none; font-size:10px; }
+.pet-bubble textarea:focus { border-color:#777; box-shadow:0 0 0 3px rgba(0,0,0,.06); }
+.pet-bubble footer { display:flex; align-items:center; justify-content:space-between; gap:7px; margin-top:7px; }
+.pet-bubble footer span { overflow:hidden; color:#666; font-size:8px; text-overflow:ellipsis; white-space:nowrap; }
+.pet-bubble footer button,.open-main,.quit-pet { padding:6px 8px; border:1px solid #111; border-radius:6px; background:#111; color:#fff; font-size:9px; cursor:pointer; }
+.pet-window-actions { display:grid; grid-template-columns:1fr auto; gap:6px; margin-top:7px; }
+.open-main { border-color:#ddd; background:#fff; color:#333; }
+.quit-pet { border-color:#ead1d1; background:#fff; color:#923b3b; }
+body.thinking .pet-character img { animation:petThinking .72s ease-in-out infinite alternate; }
+body.thinking .pet-character small { background:#b87919; }
+@keyframes petIdle { 0%,100% { transform:translateY(0) rotate(-1deg); } 50% { transform:translateY(-5px) rotate(1deg); } }
+@keyframes petThinking { from { transform:translateY(0) rotate(-2deg); } to { transform:translateY(-6px) rotate(2deg); } }
+@keyframes voiceBar { from { transform:scaleY(.45); } to { transform:scaleY(1.12); } }
+@keyframes bubbleIn { from { opacity:0; transform:translate(8px,8px) scale(.97); } to { opacity:1; transform:translate(0,0) scale(1); } }
+@media (prefers-reduced-motion:reduce) { .pet-character img,.voice-bars i { animation:none !important; } }

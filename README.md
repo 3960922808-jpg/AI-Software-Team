@@ -4,7 +4,7 @@
 
 主 Agent 负责理解目标、拆解任务与最终审查；10 个专业 Agent 使用各自的模型路由和特调 Skill 完成产品、架构、前端、后端、数据库、测试、安全、代码审查与交付工作。所有执行步骤、文件产物、真实检查、自动修复和 Git 快照都有记录。
 
-> 当前版本：`v0.22.0` · 支持简体中文和英文 · 提供 Windows x64 ZIP 免安装版
+> 当前版本：`v0.23.0` · 支持简体中文和英文 · 提供 Windows x64 ZIP 免安装版
 
 ## 下载
 
@@ -38,11 +38,16 @@
 ### Agent 工作室与可视化工作流
 
 - Agent 工作室以办公室和主对话框为中心，可查看 10 个 Agent 的真实任务状态、进度和工作反馈。
+- 灵灵现在也是独立的透明置顶桌宠。点击即可发布任务，任务会进入同一主 Agent 对话与调度闭环；右键可打开完整工作台。
+- 灵灵朗读回复时，桌宠与工作室角色头顶会同步显示三条绿色圆角语音动画；语音结束、失败或手动停止后会可靠收起。
 - 工作室与工作流对话都支持 `@Agent` 单独派活和 `/Skill` 调用技能，自动补全来自当前 Agent 与已启用 Skill。
 - 可视化工作流支持软件研发、生图和视频模板；图片与视频模式使用 `3400 × 2100` 大画布和类似 ComfyUI 的端口节点编排。
+- 媒体全屏画布顶部保留软件研发、生图、视频和返回工作室入口；添加步骤、调整步骤、AI 对话、自定义连线、模型配置和缩放工具在窄窗口也不会被隐藏。
 - 节点可拖动、添加、编辑、删除和调整进度；连线可创建、预览和删除。
-- 媒体节点显示输入/输出端口，支持按端口自定义连线、节点库复制、提示词/尺寸/采样/运动/导出参数编辑和流动连线动画。
+- 媒体节点显示输入/输出端口，提示词可直接在节点内编辑并持久化；生图和视频都能选择本机参考图片、显示缩略图并随请求真实传给模型。
+- 参考图片支持 PNG、JPG、WEBP、GIF 和 BMP，单张上限 30 MB；缩略图仅在内存缓存，工作流存储不会写入 Base64 大数据。
 - 图片工作流可调用真实生图 API 并保存、预览结果；视频工作流可保存直接返回的视频，或展示服务商任务编号。
+- 媒体请求使用 Electron 网络层，会跟随 Windows 系统代理；OpenAI 兼容、Stability、Google、可灵和 Runway 路由分别保留服务商参数。
 - 每个工作流节点都能查看模型路由、Skill、执行证据、产物与真实检查结果。
 
 ### 会话级完全访问
@@ -150,7 +155,7 @@ pnpm run test:electron
 pnpm run build:windows
 ```
 
-输出位于 `release-v0.22/`，生成 x64 ZIP 免安装版。GitHub Release 只发布 ZIP 包。
+输出位于 `release-v0.23.0/`，生成 x64 ZIP 免安装版。GitHub Release 只发布 ZIP 包。
 
 开发环境可以参考 `.env.example` 设置主模型后备配置。仓库中不要提交 API Key、GitHub Token、`.env` 或其他真实密钥。
 
@@ -158,7 +163,7 @@ pnpm run build:windows
 
 AI Software Team is a native Windows multi-agent software development workspace built with Electron. A primary agent decomposes and routes user goals to ten specialist agents, which generate real files, run controlled checks, repair failures, create Git snapshots, and produce auditable delivery records.
 
-Version `0.22.0` adds a persistent document and novel library with TXT, DOCX, DOC, PDF, PPTX, and PPT extraction; a ComfyUI-style large-canvas image/video workflow with ports and editable parameters; session-only full computer access that is off by default; real media generation queues; and an update-safe encrypted configuration vault with automatic backup recovery. The entire interface can switch between Simplified Chinese and English from Settings.
+Version `0.23.0` adds Lingling as a transparent always-on-top desktop companion connected to the same primary-agent chat and task orchestrator. Speech playback is synchronized with three green voice bars in both the companion and studio. The full-screen image/video workflow keeps every mode and tool visible, supports inline prompt editing and real reference-image input, persists only local paths, and sends media requests through Electron networking for Windows proxy compatibility. The entire interface, including the new controls and companion, supports Simplified Chinese and English.
 
 Download the latest Windows build from [Releases](https://github.com/3960922808-jpg/AI-Software-Team/releases).
 

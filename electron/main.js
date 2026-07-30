@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, clipboard, desktopCapturer, net } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, clipboard, desktopCapturer, net, screen } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
@@ -33,6 +33,9 @@ let knowledgeLibraryRuntime = null;
 let configurationVaultRuntime = null;
 let computerAccessRuntime = null;
 let mediaGenerationRuntime = null;
+let mainWindow = null;
+let petWindow = null;
+let petLocale = "zh-CN";
 const computerAccessPermissions = new Map();
 let updateInstallStarted = false;
 
@@ -110,6 +113,7 @@ function initializeModelSettings() {
   mediaGenerationRuntime = createMediaGenerationRuntime({
     getConfiguration: (kind) => mediaModelStores?.[kind]?.load() || null,
     getWorkspace: () => modelRuntime.getWorkspace().path,
+    fetchImpl: (url, options) => net.fetch(url, options),
   });
   computerAccessRuntime = createComputerAccessRuntime({
     shell, clipboard, integrationRuntime, desktopCapturer,
@@ -260,12 +264,75 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
     if (url.startsWith("https://")) shell.openExternal(url);
     return { action: "deny" };
   });
+  mainWindow = window;
+  window.on("closed", () => { if (mainWindow === window) mainWindow = null; });
   window.webContents.once("destroyed", () => computerAccessPermissions.delete(window.webContents.id));
   window.webContents.on("will-navigate", (event, url) => {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
   return window;
 };
+
+function createPetWindow() {
+  if (petWindow && !petWindow.isDestroyed()) return petWindow;
+  const workArea = screen.getPrimaryDisplay().workArea;
+  petWindow = new BrowserWindow({
+    width: 356,
+    height: 278,
+    x: workArea.x + workArea.width - 372,
+    y: workArea.y + workArea.height - 294,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "pet-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      backgroundThrottling: false
+    }
+  });
+  petWindow.setAlwaysOnTop(true, "floating");
+  petWindow.loadFile(path.join(__dirname, "..", "pet.html"));
+  petWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  petWindow.webContents.on("will-navigate", (event, url) => { if (url !== petWindow.webContents.getURL()) event.preventDefault(); });
+  petWindow.webContents.once("did-finish-load", () => sendPet("pet:locale", petLocale));
+  petWindow.once("ready-to-show", () => { if (!process.env.AI_TEAM_SCREENSHOT) petWindow.showInactive(); });
+  petWindow.on("closed", () => { petWindow = null; });
+  return petWindow;
+}
+
+function sendPet(channel, payload) {
+  if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send(channel, payload);
+}
+
+function mediaInputImage(candidatePath) {
+  const filePath = path.resolve(String(candidatePath || ""));
+  const extension = path.extname(filePath).toLowerCase();
+  const mimeTypes = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif", ".bmp": "image/bmp" };
+  if (!mimeTypes[extension]) throw new Error("请选择 PNG、JPG、WEBP、GIF 或 BMP 图片");
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile() || stat.size <= 0) throw new Error("参考图片不存在或为空");
+  if (stat.size > 30 * 1024 * 1024) throw new Error("参考图片不能超过 30MB");
+  const previewDataUrl = stat.size <= 8 * 1024 * 1024 ? `data:${mimeTypes[extension]};base64,${fs.readFileSync(filePath).toString("base64")}` : "";
+  return { canceled: false, filePath, path: filePath, name: path.basename(filePath), bytes: stat.size, mimeType: mimeTypes[extension], previewDataUrl };
+}
+
+async function ensureMainWindow() {
+  let window = mainWindow;
+  if (!window || window.isDestroyed()) window = createWindow();
+  if (window.webContents.isLoading()) await new Promise((resolve) => window.webContents.once("did-finish-load", resolve));
+  if (window.isMinimized()) window.restore();
+  window.show(); window.focus();
+  return window;
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -283,6 +350,19 @@ if (!app.requestSingleInstanceLock()) {
     await updateSplash(splashWindow, 46, "正在加载智能体与专属技能");
     if (process.env.AI_TEAM_SCREENSHOT_WORKSPACE) modelRuntime.setWorkspace(process.env.AI_TEAM_SCREENSHOT_WORKSPACE);
     ipcMain.handle("app:get-info", () => ({ version: app.getVersion(), platform: process.platform }));
+    ipcMain.handle("pet:submit", async (_event, content) => {
+      const task = String(content || "").trim().slice(0, 2000);
+      if (!task) throw new Error("任务内容不能为空");
+      const window = await ensureMainWindow();
+      window.webContents.send("pet:task", task);
+      sendPet("pet:state", { state: "thinking" });
+      return { accepted: true };
+    });
+    ipcMain.handle("pet:open-main", async () => { await ensureMainWindow(); return { opened: true }; });
+    ipcMain.handle("pet:quit", () => { app.quit(); return { quitting: true }; });
+    ipcMain.handle("pet:response", (_event, payload) => { sendPet("pet:response", payload || {}); return { delivered: true }; });
+    ipcMain.handle("pet:speaking", (_event, speaking) => { sendPet("pet:state", { state: speaking ? "speaking" : "idle" }); return { delivered: true }; });
+    ipcMain.handle("pet:locale", (_event, locale) => { petLocale = locale === "en-US" ? "en-US" : "zh-CN"; sendPet("pet:locale", petLocale); return { delivered: true }; });
     ipcMain.handle("model:configure", (_event, config) => {
       if (!modelSettingsStore) initializeModelSettings();
       const previous = modelSettingsStore.load();
@@ -462,6 +542,13 @@ if (!app.requestSingleInstanceLock()) {
       return { ...result, audio: new Uint8Array(result.audio) };
     });
     ipcMain.handle("media:execute-workflow", (_event, kind, payload) => mediaGenerationRuntime.execute(kind, payload));
+    ipcMain.handle("media:choose-input-image", async (_event, candidatePath) => {
+      if (candidatePath) return mediaInputImage(candidatePath);
+      const options = { title: "为生成节点选择参考图片", properties: ["openFile"], filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp"] }] };
+      const result = mainWindow && !mainWindow.isDestroyed() ? await dialog.showOpenDialog(mainWindow, options) : await dialog.showOpenDialog(options);
+      if (result.canceled || !result.filePaths[0]) return { canceled: true };
+      return mediaInputImage(result.filePaths[0]);
+    });
     ipcMain.handle("media:open-output", async (_event, filePath) => {
       const workspace = modelRuntime.getWorkspace().path;
       if (!workspace) throw new Error("尚未选择 Agent 产物目录");
@@ -529,6 +616,7 @@ if (!app.requestSingleInstanceLock()) {
     });
     await updateSplash(splashWindow, 72, "正在连接任务、记忆与审计中心");
     createWindow(splashWindow, startupStartedAt);
+    createPetWindow();
     if (!process.env.AI_TEAM_SCREENSHOT && !process.env.AI_TEAM_SMOKE_TEST && updateRuntime.status().settings.autoCheck) {
       setTimeout(async () => {
         try {
@@ -544,10 +632,15 @@ if (!app.requestSingleInstanceLock()) {
       }, 6 * 60 * 60 * 1000).unref();
     }
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (!mainWindow || mainWindow.isDestroyed()) createWindow();
+      createPetWindow();
     });
   });
 }
+
+app.on("second-instance", () => {
+  if (mainWindow && !mainWindow.isDestroyed()) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); }
+});
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();

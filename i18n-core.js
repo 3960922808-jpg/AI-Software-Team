@@ -284,7 +284,13 @@
     ["调节精细程度、内容贴合度和随机变化", "Adjust detail, content accuracy, and variation"], ["内容贴合度", "Content accuracy"], ["生成视频画面", "Create video frames"], ["把模型结果变成连续的视频画面", "Turn model output into continuous video frames"],
     ["画面流畅度", "Video smoothness"], ["减少闪烁和卡顿，让动作更顺滑", "Reduce flicker and stutter for smoother motion"], ["流畅倍数", "Smoothness multiplier"], ["减少画面抖动", "Reduce camera shake"],
     ["添加声音和字幕", "Add audio and subtitles"], ["按需加入配音、字幕和背景声音", "Optionally add voiceover, subtitles, and background audio"],
-    ["保存视频", "Save video"], ["生成视频文件并保存到 Agent 产物目录", "Create the video file and save it to the agent output folder"], ["文件格式", "File format"], ["清晰度与兼容方式", "Quality and compatibility"], ["兼容优先", "Most compatible"], ["体积更小", "Smaller file"], ["网页播放", "Web playback"]
+    ["保存视频", "Save video"], ["生成视频文件并保存到 Agent 产物目录", "Create the video file and save it to the agent output folder"], ["文件格式", "File format"], ["清晰度与兼容方式", "Quality and compatibility"], ["兼容优先", "Most compatible"], ["体积更小", "Smaller file"], ["网页播放", "Web playback"],
+    ["软件研发", "Software Development"], ["生成图片", "Generate Image"], ["生成视频", "Generate Video"], ["返回工作室", "Back to Studio"], ["工作流模式", "Workflow modes"],
+    ["添加参考图片", "Add reference image"], ["可选，让生成结果参考人物、构图或风格", "Optional reference for a person, composition, or style"], ["可选，用一张图片作为视频开头或人物参考", "Optional opening frame or character reference"],
+    ["参考图片", "Reference image"], ["可选参考图片", "Optional reference image"], ["尚未选择图片", "No image selected"], ["选择图片", "Choose image"], ["移除", "Remove"], ["参考图片预览", "Reference image preview"],
+    ["在这里输入画面描述…", "Enter the image description here..."], ["在这里输入视频内容描述…", "Enter the video description here..."], ["在这里输入需要排除的内容…", "Enter content to exclude here..."],
+    ["和灵灵对话", "Chat with Lingling"], ["灵灵正在说话", "Lingling is speaking"], ["收到任务，我先分析该交给谁来完成。", "Task received. I will decide which agent should handle it."],
+    ["参考图片读取失败", "Failed to read reference image"]
     ,["常规下载受阻，已切换 Windows 系统下载", "The regular download was blocked; switched to Windows system download"]
   ]);
 
@@ -322,7 +328,7 @@
     if (language !== "en-US" || !source) return source;
     if (translations.has(source)) return translations.get(source);
     for (const [pattern, replacement] of patterns) if (pattern.test(source)) return source.replace(pattern, replacement);
-    for (const separator of [" → ", " · ", "，", ": "]) {
+    for (const separator of [" → ", " · ", "，", ": ", "："]) {
       if (!source.includes(separator)) continue;
       const parts = source.split(separator);
       const translatedParts = parts.map((part) => translate(part, language));

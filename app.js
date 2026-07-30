@@ -109,6 +109,8 @@ let voiceState = { configured: false, autoSpeak: false, voice: "alloy", speed: 1
 let voiceRecorder = null;
 let voiceRecordingTarget = null;
 let activeVoiceAudio = null;
+const mediaImagePreviews = new Map();
+const mediaImagePreviewLoading = new Set();
 let computerAccessState = { enabled: false, sessionOnly: true };
 let mediaWorkflowResult = null;
 let updateState = { status: "idle", currentVersion: "", latestVersion: "", progress: 0, settings: { autoCheck: true, autoDownload: true, installOnRestart: true } };
@@ -359,15 +361,53 @@ function renderWorkflowParameterFields(node) {
 }
 
 function mediaNodeSummary(node) {
-  const entries = Object.entries(node.parameters || {}).slice(0, 4);
-  return entries.length ? entries.map(([key, value]) => `${key}: ${typeof value === "boolean" ? (value ? "开启" : "关闭") : String(value || "未设置").slice(0, 28)}`).join(" · ") : node.subtitle;
+  const labels = Object.fromEntries((node.parameterSchema || []).map((field) => [field.key, field.label]));
+  const entries = Object.entries(node.parameters || {}).filter(([key]) => !["prompt", "negativePrompt", "referenceImagePath"].includes(key)).slice(0, 4);
+  return entries.length ? entries.map(([key, value]) => `${labels[key] || key}：${typeof value === "boolean" ? (value ? "开启" : "关闭") : String(value || "未设置").slice(0, 28)}`).join(" · ") : node.subtitle;
+}
+
+function mediaImageName(filePath) {
+  return String(filePath || "").split(/[\\/]/).pop() || "尚未选择图片";
+}
+
+function mediaNodeInlineFields(node) {
+  return (node.parameterSchema || []).filter((field) => field.inline || field.type === "image").map((field) => {
+    const value = node.parameters?.[field.key] ?? "";
+    const common = `data-media-control data-media-node="${escapeHtml(node.id)}" data-media-parameter="${escapeHtml(field.key)}"`;
+    if (field.type === "textarea") return `<label class="media-inline-field"><span>${escapeHtml(field.label)}</span><textarea ${common} rows="${Number(field.rows) || 5}" placeholder="在这里输入${escapeHtml(field.label)}…">${escapeHtml(value)}</textarea></label>`;
+    if (field.type === "image") {
+      const preview = mediaImagePreviews.get(String(value || ""));
+      return `<section class="media-inline-image" data-media-control><span>${escapeHtml(field.label)}</span><div class="media-image-preview ${preview ? "has-image" : ""}">${preview ? `<img src="${escapeHtml(preview)}" alt="参考图片预览" />` : '<b>＋</b><small>可选参考图片</small>'}</div><p title="${escapeHtml(value)}">${escapeHtml(mediaImageName(value))}</p><div><button type="button" data-media-image-choose="${escapeHtml(node.id)}" data-media-image-key="${escapeHtml(field.key)}">选择图片</button><button type="button" data-media-image-remove="${escapeHtml(node.id)}" data-media-image-key="${escapeHtml(field.key)}" ${value ? "" : "hidden"}>移除</button></div></section>`;
+    }
+    return "";
+  }).join("");
 }
 
 function mediaNodeMarkup(node) {
   const portLabels = { MODEL: "模型", CLIP: "文字理解", ENCODER: "文字理解", VAE: "成图工具", CONDITIONING: "画面描述", POSITIVE: "想要内容", NEGATIVE: "排除内容", LATENT: "画面底稿", SAMPLES: "生成画面", IMAGE: "图片", FILE: "文件", RESULT: "完成", MOTION: "镜头设置", LATENT_VIDEO: "视频底稿", FRAMES: "视频画面", TIMELINE: "声音字幕" };
   const inputPorts = (node.inputs || []).map((port) => `<span class="media-port input" data-port="${escapeHtml(port)}"><i></i><b>${escapeHtml(portLabels[port] || port)}</b></span>`).join("");
   const outputPorts = (node.outputs || []).map((port) => `<span class="media-port output" data-port="${escapeHtml(port)}"><b>${escapeHtml(portLabels[port] || port)}</b><i></i></span>`).join("");
-  return `<article class="workflow-node media ${node.state} ${node.id === selectedWorkflowNodeId ? "selected" : ""}" data-workflow-node="${escapeHtml(node.id)}" tabindex="0" aria-label="${escapeHtml(node.title)}"><header><span>${escapeHtml(node.code || "NODE")}</span><strong>${escapeHtml(node.title)}</strong></header><div class="media-node-body"><div class="media-port-column inputs">${inputPorts}</div><div class="media-port-column outputs">${outputPorts}</div></div><p>${escapeHtml(mediaNodeSummary(node))}</p><footer><span>${(node.inputs || []).length} 入</span><span>${(node.outputs || []).length} 出</span></footer></article>`;
+  return `<article class="workflow-node media ${node.state} ${node.id === selectedWorkflowNodeId ? "selected" : ""}" data-workflow-node="${escapeHtml(node.id)}" tabindex="0" aria-label="${escapeHtml(node.title)}"><header><span>${escapeHtml(node.code || "NODE")}</span><strong>${escapeHtml(node.title)}</strong></header><div class="media-node-body"><div class="media-port-column inputs">${inputPorts}</div><div class="media-port-column outputs">${outputPorts}</div></div>${mediaNodeInlineFields(node)}<p>${escapeHtml(mediaNodeSummary(node))}</p><footer><span>${(node.inputs || []).length} 入</span><span>${(node.outputs || []).length} 出</span></footer></article>`;
+}
+
+function saveWorkflowNodeParameter(nodeId, key, value) {
+  const editor = getWorkflowModeState();
+  const override = editor.nodeOverrides[nodeId] || {};
+  editor.nodeOverrides[nodeId] = { ...override, parameters: { ...(override.parameters || {}), [key]: value } };
+  saveWorkflowEditor();
+}
+
+function hydrateMediaImagePreviews(workflow) {
+  if (!window.desktop?.chooseMediaInputImage) return;
+  for (const node of workflow.nodes) for (const field of node.parameterSchema || []) {
+    const filePath = field.type === "image" ? String(node.parameters?.[field.key] || "") : "";
+    if (!filePath || mediaImagePreviews.has(filePath) || mediaImagePreviewLoading.has(filePath)) continue;
+    mediaImagePreviewLoading.add(filePath);
+    window.desktop.chooseMediaInputImage(filePath).then((result) => {
+      if (result?.previewDataUrl) mediaImagePreviews.set(filePath, result.previewDataUrl);
+      if (currentWorkflow?.mode === workflow.mode) renderWorkflow();
+    }).catch(() => {}).finally(() => mediaImagePreviewLoading.delete(filePath));
+  }
 }
 
 function renderWorkflowInspector(workflow) {
@@ -446,6 +486,7 @@ function renderWorkflow() {
   });
   renderMediaWorkflowChrome(workflow);
   renderWorkflowInspector(workflow);
+  if (mediaMode) hydrateMediaImagePreviews(workflow);
 }
 
 function renderMediaWorkflowChrome(workflow) {
@@ -1480,6 +1521,17 @@ async function loadVoiceSettings() {
 function stopVoicePlayback() {
   if (activeVoiceAudio) { activeVoiceAudio.pause(); activeVoiceAudio.src = ""; activeVoiceAudio = null; }
   document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = true; });
+  setLinglingSpeaking(false);
+}
+
+function setLinglingSpeech(text) {
+  const speech = document.querySelector("#manager-speech");
+  if (speech && text) speech.textContent = String(text).replace(/[#*_`]/g, "").slice(0, 88);
+}
+
+function setLinglingSpeaking(speaking) {
+  document.querySelector("#manager-character")?.classList.toggle("speaking", Boolean(speaking));
+  window.desktop?.setPetSpeaking?.(Boolean(speaking)).catch(() => {});
 }
 
 async function speakText(text) {
@@ -1492,10 +1544,14 @@ async function speakText(text) {
   const audio = new Audio(url);
   activeVoiceAudio = audio;
   document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = false; });
-  const cleanup = () => { if (activeVoiceAudio === audio) activeVoiceAudio = null; URL.revokeObjectURL(url); document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = true; }); };
+  setLinglingSpeech(text);
+  setLinglingSpeaking(true);
+  let cleaned = false;
+  const cleanup = () => { if (cleaned) return; cleaned = true; if (activeVoiceAudio === audio) activeVoiceAudio = null; URL.revokeObjectURL(url); document.querySelectorAll("[data-stop-voice]").forEach((button) => { button.hidden = true; }); setLinglingSpeaking(false); };
   audio.addEventListener("ended", cleanup, { once: true });
   audio.addEventListener("error", cleanup, { once: true });
-  await audio.play();
+  try { await audio.play(); }
+  catch (error) { cleanup(); throw error; }
 }
 
 function maybeAutoSpeak(text) {
@@ -1746,7 +1802,7 @@ function renderChat() {
   messages.innerHTML = `<article class="chat-message assistant"><p>告诉我你要交付什么。我可以分析问题，也可以创建任务并调用完整 Agent 团队执行。</p></article>${chatMessages.map((message, index) => `<article class="chat-message ${message.role} ${message.pending ? "pending" : ""}"><div>${formatChatContent(message.content)}</div>${message.action ? `<button class="chat-action-button" type="button" data-chat-action="${index}">${message.action.type === "create_and_execute" ? "创建并交给团队执行" : "创建任务"}</button>` : ""}${message.role === "assistant" && !message.pending ? chatSpeakButton("main", index) : ""}</article>`).join("")}`;
   messages.scrollTop = messages.scrollHeight;
 }
-async function sendChat(content) {
+async function sendChat(content, options = {}) {
   const command = parseWorkflowChatCommand(content);
   chatMessages.push({ role: "user", content }); chatMessages.push({ role: "assistant", content: `${command.targetLabel}正在处理…`, label: command.targetLabel, pending: true }); renderChat();
   document.querySelector("#chat-target").textContent = `@${command.targetLabel} · ${command.targetAgent === "commander" ? "主 Agent" : "单独执行"}`;
@@ -1754,9 +1810,19 @@ async function sendChat(content) {
     if (!window.desktop?.chat) throw new Error("请先使用 Electron 桌面版并配置模型 API");
     const result = await window.desktop.chat({ messages: chatMessages.filter((message) => !message.pending).map(({ role, content: text }) => ({ role, content: text })), context: getTeamContext(), targetAgent: command.targetAgent, invokedSkills: command.invokedSkills });
     chatMessages[chatMessages.length - 1] = { role: "assistant", content: `${result.content}${computerOperationReport(result)}`, action: result.action, label: command.targetLabel };
+    setLinglingSpeech(result.content);
     maybeAutoSpeak(result.content);
-  } catch (error) { chatMessages[chatMessages.length - 1] = { role: "assistant", content: `暂时无法回答：${error.message}`, label: command.targetLabel }; }
-  renderChat();
+    const responseIndex = chatMessages.length - 1;
+    renderChat();
+    if (options.autoExecute && result.action?.type === "create_and_execute") await applyChatAction(responseIndex);
+    return { content: result.content, action: result.action };
+  } catch (error) {
+    const failure = `暂时无法回答：${error.message}`;
+    chatMessages[chatMessages.length - 1] = { role: "assistant", content: failure, label: command.targetLabel };
+    setLinglingSpeech(failure);
+    renderChat();
+    return { content: failure, error: error.message };
+  }
 }
 function formatChatContent(content) {
   const escaped = escapeHtml(content);
@@ -1871,7 +1937,7 @@ document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.add
   selectedWorkflowNodeId = template.nodes.find((node) => node.manager)?.id || template.nodes[0]?.id;
   workflowConnectSource = null;
   saveWorkflowEditor();
-  document.querySelectorAll("[data-workflow-mode]").forEach((item) => item.classList.toggle("active", item === button));
+  document.querySelectorAll("[data-workflow-mode]").forEach((item) => item.classList.toggle("active", item.dataset.workflowMode === button.dataset.workflowMode));
   renderWorkflow();
   requestAnimationFrame(() => mediaMode ? fitMediaWorkflow({ immediate: true }) : centerWorkflowCanvas());
 }));
@@ -1893,6 +1959,10 @@ document.querySelector("#workflow-connect").addEventListener("click", () => {
 });
 document.querySelector("#workflow-models").addEventListener("click", () => activateView("model-pool"));
 document.querySelector("#workflow-nodes").addEventListener("click", (event) => {
+  const chooseButton = event.target.closest("[data-media-image-choose]");
+  const removeButton = event.target.closest("[data-media-image-remove]");
+  if (chooseButton) { chooseMediaNodeImage(chooseButton.dataset.mediaImageChoose, chooseButton.dataset.mediaImageKey); return; }
+  if (removeButton) { removeMediaNodeImage(removeButton.dataset.mediaImageRemove, removeButton.dataset.mediaImageKey); return; }
   const element = event.target.closest("[data-workflow-node]");
   if (!element || workflowSuppressClick) return;
   const id = element.dataset.workflowNode;
@@ -1909,7 +1979,7 @@ document.querySelector("#workflow-nodes").addEventListener("click", (event) => {
 });
 document.querySelector("#workflow-nodes").addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || document.querySelector("#workflow-canvas").classList.contains("connecting")) return;
-  if (event.target.closest("[data-port]")) return;
+  if (event.target.closest("[data-port],[data-media-control]")) return;
   const element = event.target.closest("[data-workflow-node]");
   if (!element) return;
   const node = currentWorkflow?.nodes.find((item) => item.id === element.dataset.workflowNode);
@@ -1918,6 +1988,31 @@ document.querySelector("#workflow-nodes").addEventListener("pointerdown", (event
   element.setPointerCapture?.(event.pointerId);
   element.classList.add("dragging");
 });
+document.querySelector("#workflow-nodes").addEventListener("input", (event) => {
+  const field = event.target.closest("[data-media-parameter]");
+  if (!field) return;
+  saveWorkflowNodeParameter(field.dataset.mediaNode, field.dataset.mediaParameter, field.value);
+});
+
+async function chooseMediaNodeImage(nodeId, key) {
+  if (!window.desktop?.chooseMediaInputImage) { alert("请选择 Electron 桌面版使用参考图片"); return; }
+  try {
+    const result = await window.desktop.chooseMediaInputImage();
+    if (result?.canceled || !result?.filePath) return;
+    if (result.previewDataUrl) mediaImagePreviews.set(result.filePath, result.previewDataUrl);
+    saveWorkflowNodeParameter(nodeId, key, result.filePath);
+    selectedWorkflowNodeId = nodeId;
+    renderWorkflow();
+  } catch (error) { alert(`参考图片读取失败：${error.message}`); }
+}
+
+function removeMediaNodeImage(nodeId, key) {
+  const node = currentWorkflow?.nodes.find((item) => item.id === nodeId);
+  const filePath = node?.parameters?.[key];
+  if (filePath) mediaImagePreviews.delete(filePath);
+  saveWorkflowNodeParameter(nodeId, key, "");
+  renderWorkflow();
+}
 function moveWorkflowDrag(event) {
   if (!workflowDragging && workflowConnectSource) updateWorkflowConnectionPreview(event);
   if (!workflowDragging) return;
@@ -2038,6 +2133,8 @@ document.querySelector("#export-audit-button").addEventListener("click", async (
 
 document.querySelector("#desk-grid").addEventListener("contextmenu", (event) => { const pet = event.target.closest("[data-agent-id]"); if (!pet) return; event.preventDefault(); showAgentMenu(pet.dataset.agentId, event.clientX, event.clientY); });
 document.querySelector("#manager-character").addEventListener("contextmenu", (event) => { event.preventDefault(); showAgentMenu("manager", event.clientX, event.clientY); });
+document.querySelector("#manager-character").addEventListener("click", () => { document.querySelector("#chat-input").focus(); document.querySelector("#chat-input").scrollIntoView({ behavior: "smooth", block: "center" }); });
+document.querySelector("#manager-character").addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); document.querySelector("#manager-character").click(); } });
 document.addEventListener("click", (event) => { if (!event.target.closest("#agent-context-menu")) hideAgentMenu(); });
 document.querySelector("#context-edit-agent").addEventListener("click", () => { const agent = officeAgents.find((item) => item.id === selectedAgentId); if (!agent) return; const form = document.querySelector("#agent-form"); form.querySelector('[name="id"]').value = agent.id; form.querySelector('[name="name"]').value = agent.name; form.querySelector('[name="role"]').value = agent.role; hideAgentMenu(); document.querySelector("#agent-dialog").showModal(); });
 document.querySelector("#context-delete-agent").addEventListener("click", () => { const agent = officeAgents.find((item) => item.id === selectedAgentId); if (!agent || !confirm(uiText(`确定删除 ${agent.name} 吗？`))) return; officeAgents = officeAgents.filter((item) => item.id !== selectedAgentId); saveAgents(); hideAgentMenu(); render(); });
@@ -2477,6 +2574,20 @@ document.querySelector("#update-download-button").addEventListener("click", asyn
 document.querySelector("#update-restart-button").addEventListener("click", async () => { document.querySelector("#update-restart-button").disabled = true; try { await window.desktop.restartToUpdate(); } catch (error) { renderUpdateState({ ...updateState, status: "error", error: error.message }); document.querySelector("#update-restart-button").disabled = false; } });
 document.querySelector("#update-release-button").addEventListener("click", () => { if (updateState.releaseUrl) window.desktop.openExternal(updateState.releaseUrl).catch((error) => renderUpdateState({ ...updateState, status: "error", error: error.message })); });
 window.desktop?.onUpdateState?.((state) => renderUpdateState(state));
+window.desktop?.onPetTask?.(async (content) => {
+  if (interfaceMode !== "studio") applyInterfaceMode("studio");
+  activateView("projects");
+  const input = document.querySelector("#chat-input");
+  input.value = String(content || "");
+  input.focus();
+  setLinglingSpeech("收到任务，我先分析该交给谁来完成。");
+  try {
+    const response = await sendChat(String(content || ""), { autoExecute: true });
+    await window.desktop.sendPetResponse({ text: response.content || "任务已经处理完成。", speaking: false });
+  } catch (error) {
+    await window.desktop.sendPetResponse({ text: `任务处理失败：${error.message}`, speaking: false });
+  }
+});
 
 setInterval(() => {
   const longRunning = officeAgents.filter((agent) => { const status = getAgentStatus(agent); return status.busy && status.startedAt && Date.now() - status.startedAt > 45000; });
@@ -2490,6 +2601,7 @@ setInterval(() => { managerLine = (managerLine + 1) % managerLines.length; docum
 setInterval(() => renderOffice(), 3000);
 
 document.addEventListener("app-language-change", () => {
+  window.desktop?.setPetLocale?.(uiLocale()).catch(() => {});
   renderSkills();
   renderChat();
   renderWorkflowChat();
@@ -2506,5 +2618,6 @@ repairOverlappingMediaLayout(workflowEditorState.activeMode);
 document.querySelectorAll("[data-workflow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.workflowMode === workflowEditorState.activeMode));
 selectedWorkflowNodeId = window.WorkflowState?.templates?.[workflowEditorState.activeMode]?.nodes.find((node) => node.manager)?.id || "commander";
 installViewBackButtons(); loadModelSettings(); loadConfigurationVault(); loadMediaModels(); loadVoiceSettings(); loadModelPool(); loadPlugins(); loadKnowledgeDocuments(); loadMemoryGraph(); loadComputerAccess(); loadUpdateState(); renderSkills(); renderChat(); renderWorkflowChat(); render(); refreshSandboxPolicy(); applyInterfaceMode(interfaceMode);
+window.desktop?.setPetLocale?.(uiLocale()).catch(() => {});
 window.desktop?.getWorkspace?.().then((result) => setWorkspaceState(result.path || null));
 window.desktop?.getIntegrationStatus?.().then((result) => setIntegrationStatus(result.githubTokenConfigured));

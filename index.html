@@ -47,7 +47,7 @@
               <div class="office-wall"><div class="office-window"><span></span><span></span><span></span></div><div class="wall-board"><b>TEAM BOARD</b><small>灵灵正在巡查工作进度</small></div><div class="wall-clock"><i></i></div></div>
               <div class="office-floor"></div>
               <div class="desk-grid" id="desk-grid"></div>
-              <div class="manager-character" id="manager-character" data-agent-id="manager"><div class="manager-speech" id="manager-speech">大家加油，记得保存进度哦！</div><img src="assets/agents/manager.png" alt="项目经理灵灵" /><span>灵灵 · 项目经理</span></div>
+              <div class="manager-character" id="manager-character" data-agent-id="manager" tabindex="0" role="button" aria-label="和灵灵对话"><span class="lingling-voice-bars" id="lingling-voice-bars" aria-label="灵灵正在说话"><i></i><i></i><i></i></span><div class="manager-speech" id="manager-speech">大家加油，记得保存进度哦！</div><img src="assets/agents/manager.png" alt="项目经理灵灵" /><span>灵灵 · 项目经理</span></div>
               <div class="office-tip">右键点击 Agent 查看进度、编辑或删除</div>
             </section>
             <aside class="ai-chat-panel">
@@ -60,6 +60,12 @@
           <div class="agent-context-menu" id="agent-context-menu" hidden><header><img id="context-agent-image" alt="" /><div><strong id="context-agent-name"></strong><span id="context-agent-role"></span></div></header><div class="context-progress"><div><span>当前进度</span><b id="context-progress-label">0%</b></div><progress id="context-progress" max="100" value="0"></progress><small id="context-task-label">当前空闲</small></div><button type="button" id="context-edit-agent">编辑 Agent</button><button class="danger" type="button" id="context-delete-agent">删除 Agent</button></div>
         </section>
         <section class="view workflow-view" data-view-panel="workflow">
+          <nav class="workflow-mode-dock" aria-label="工作流模式">
+            <button type="button" data-workflow-mode="software"><span>01</span><b>软件研发</b></button>
+            <button type="button" data-workflow-mode="image"><span>02</span><b>生成图片</b></button>
+            <button type="button" data-workflow-mode="video"><span>03</span><b>生成视频</b></button>
+            <button type="button" data-interface-mode="studio"><span>←</span><b>返回工作室</b></button>
+          </nav>
           <header class="topbar workflow-topbar">
             <div><p class="eyebrow">VISUAL WORKFLOW</p><h1>可视化工作流</h1></div>
             <div class="workflow-toolbar">

@@ -49,7 +49,16 @@ contextBridge.exposeInMainWorld("desktop", Object.freeze({
   transcribeVoice: (payload) => ipcRenderer.invoke("voice:transcribe", payload),
   synthesizeVoice: (payload) => ipcRenderer.invoke("voice:synthesize", payload),
   executeMediaWorkflow: (kind, payload) => ipcRenderer.invoke("media:execute-workflow", kind, payload),
+  chooseMediaInputImage: (filePath) => ipcRenderer.invoke("media:choose-input-image", filePath),
   openMediaOutput: (filePath) => ipcRenderer.invoke("media:open-output", filePath),
+  onPetTask: (listener) => {
+    const handler = (_event, content) => listener(content);
+    ipcRenderer.on("pet:task", handler);
+    return () => ipcRenderer.removeListener("pet:task", handler);
+  },
+  sendPetResponse: (payload) => ipcRenderer.invoke("pet:response", payload),
+  setPetSpeaking: (speaking) => ipcRenderer.invoke("pet:speaking", speaking),
+  setPetLocale: (locale) => ipcRenderer.invoke("pet:locale", locale),
   getConfigurationVault: () => ipcRenderer.invoke("config-vault:status"),
   openConfigurationVault: () => ipcRenderer.invoke("config-vault:open"),
   exportConfigurationVault: () => ipcRenderer.invoke("config-vault:export"),
