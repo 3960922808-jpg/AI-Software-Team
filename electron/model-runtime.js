@@ -291,23 +291,36 @@ async function chat(payload) {
   const context = `${(payload.context || []).slice(0, 10).join("\n")}\n${formatMemoryGraph(payload.memoryGraph, 8000)}`.slice(0, 16000);
   const plugins = (Array.isArray(payload.plugins) ? payload.plugins : []).slice(0, 20).map((plugin) => `${plugin.name}：${plugin.skills.join("、")}`).join("；").slice(0, 6000);
   const invokedSkills = (Array.isArray(payload.invokedSkills) ? payload.invokedSkills : []).slice(0, 12).map((skill) => String(skill).slice(0, 80)).join("、");
+  const computerAccess = payload.computerAccess === true;
+  const computerResults = (Array.isArray(payload.computerResults) ? payload.computerResults : []).slice(-20);
+  const allowedComputerActions = new Set(["open_url", "read_webpage", "open_path", "open_application", "read_file", "list_directory", "inspect_windows", "read_clipboard", "set_clipboard", "type_text", "hotkey", "click", "capture_screen", "wait"]);
+  const normalizeComputerActions = (value) => computerAccess && Array.isArray(value)
+    ? value.slice(0, 8).filter((action) => action && typeof action === "object" && allowedComputerActions.has(action.type)).map((action) => ({ ...action, type: String(action.type) }))
+    : [];
+  const computerProtocol = computerAccess
+    ? `\n用户已为本次软件会话明确开启“完全访问”。确实需要读取网页或文件、打开应用、检查窗口、操作剪贴板、输入文字、发送快捷键、点击坐标、截图或等待时，可以请求电脑动作。允许的动作类型仅为：${[...allowedComputerActions].join("、")}。每轮最多 8 个动作；先读取和检查，再做必要操作；不得重复已经成功执行的动作；不得声称尚未执行的动作已经完成。`
+    : "\n完全访问当前关闭。不得请求或声称执行任何电脑操作。";
+  const resultContext = computerResults.length
+    ? `\n上一轮电脑操作的真实结果：\n${JSON.stringify(computerResults, null, 2).slice(0, 18000)}\n请根据结果回答；只有确实缺少信息时才请求新的、不重复的动作。`
+    : "";
   if (target !== "commander") {
     const text = await callModel(
-      `${agentRoles[target]}你现在被用户通过 @ 单独调用，只处理当前交给你的工作，不代表其他 Agent 发言。回答必须专业、具体、可执行；若用户通过 / 指定技能，必须优先遵循这些技能。输出清晰的 Markdown，禁止虚构已运行的命令、测试或文件。`,
-      `团队上下文：\n${context || "暂无"}\n指定技能：${invokedSkills || "未指定"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}\n\n对话记录：\n${history}`,
+      `${agentRoles[target]}你现在被用户通过 @ 单独调用，只处理当前交给你的工作，不代表其他 Agent 发言。回答必须专业、具体、可执行；若用户通过 / 指定技能，必须优先遵循这些技能。禁止虚构已运行的命令、测试或文件。只输出 JSON：{"reply":"Markdown 回答","computerActions":[]}。${computerProtocol}`,
+      `团队上下文：\n${context || "暂无"}\n指定技能：${invokedSkills || "未指定"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}${resultContext}\n\n对话记录：\n${history}`,
       target
     );
     const route = describeRoute(target);
-    return { content: text, action: null, target, model: route.model, profileName: route.profileName };
+    const parsed = parseJson(text, null);
+    return { content: String(parsed?.reply || text), action: null, computerActions: normalizeComputerActions(parsed?.computerActions), target, model: route.model, profileName: route.profileName };
   }
   const text = await callModel(
-    "你是 AI 软件团队的项目经理灵灵。回答必须专业、具体、可执行。你可以回答、分析，也可以建议创建任务。只输出 JSON：{\"reply\":\"Markdown 回答\",\"action\":null}；需要行动时 action 为 {\"type\":\"create_task\"或\"create_and_execute\",\"title\":\"任务名\",\"description\":\"清晰交付要求\",\"priority\":\"high|medium|low\",\"agent\":\"建议 Agent\"}。未经用户明确要求不要自动执行。",
-    `团队上下文：\n${context || "暂无"}\n指定技能：${invokedSkills || "未指定"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}\n\n对话记录：\n${history}`
+    `你是 AI 软件团队的项目经理灵灵。回答必须专业、具体、可执行。你可以回答、分析，也可以建议创建任务。只输出 JSON：{"reply":"Markdown 回答","action":null,"computerActions":[]}；需要创建研发任务时 action 为 {"type":"create_task"或"create_and_execute","title":"任务名","description":"清晰交付要求","priority":"high|medium|low","agent":"建议 Agent"}。未经用户明确要求不要自动执行。${computerProtocol}`,
+    `团队上下文：\n${context || "暂无"}\n指定技能：${invokedSkills || "未指定"}\n启用插件：${plugins || "无"}\n工作目录：${workspacePath || "未选择"}${resultContext}\n\n对话记录：\n${history}`
   );
   const parsed = parseJson(text, null);
   const route = describeRoute("commander");
-  if (!parsed) return { content: text, action: null, target: "commander", model: route.model, profileName: route.profileName };
-  return { content: String(parsed.reply || text), action: parsed.action && typeof parsed.action === "object" ? parsed.action : null, target: "commander", model: route.model, profileName: route.profileName };
+  if (!parsed) return { content: text, action: null, computerActions: [], target: "commander", model: route.model, profileName: route.profileName };
+  return { content: String(parsed.reply || text), action: parsed.action && typeof parsed.action === "object" ? parsed.action : null, computerActions: normalizeComputerActions(parsed.computerActions), target: "commander", model: route.model, profileName: route.profileName };
 }
 
 module.exports = { configure, clear, configurePool, clearPool, poolStatus, status, setWorkspace, getWorkspace, testConnection, testProfile, executeTask, chat };

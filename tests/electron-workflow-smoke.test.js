@@ -107,6 +107,10 @@ async function main() {
         integrationTest: typeof window.desktop?.testIntegration === 'function',
         mediaGet: typeof window.desktop?.getMediaModels === 'function',
         mediaConfigure: typeof window.desktop?.configureMediaModel === 'function',
+        mediaExecute: typeof window.desktop?.executeMediaWorkflow === 'function',
+        knowledgeLibrary: typeof window.desktop?.importKnowledgeDocuments === 'function' && typeof window.desktop?.openKnowledgeDocument === 'function',
+        computerAccess: typeof window.desktop?.getComputerAccess === 'function' && document.querySelectorAll('[data-computer-access]').length === 2,
+        configurationVault: typeof window.desktop?.getConfigurationVault === 'function' && Boolean(document.querySelector('.configuration-vault')),
         imageModelForm: Boolean(document.querySelector('#image-model-form')),
         videoModelForm: Boolean(document.querySelector('#video-model-form')),
         languageControls: document.querySelectorAll('[data-language]').length,
@@ -124,7 +128,8 @@ async function main() {
     assert.ok(initial.backButtons >= 10);
     assert.equal(initial.agentRoutes, 11);
     assert.equal(initial.integrationTest, true);
-    assert.ok(initial.mediaGet && initial.mediaConfigure);
+    assert.ok(initial.mediaGet && initial.mediaConfigure && initial.mediaExecute);
+    assert.ok(initial.knowledgeLibrary && initial.computerAccess && initial.configurationVault);
     assert.ok(initial.imageModelForm && initial.videoModelForm);
     assert.equal(initial.languageControls, 2);
     assert.equal(initial.demoPanels, 0);
@@ -156,7 +161,9 @@ async function main() {
     assert.equal(graphSurface.selected, 'app');
     assert.ok(graphSurface.scale > 0);
     const updaterStatus = await client.evaluate('window.desktop.getUpdateStatus()');
-    assert.equal(updaterStatus.currentVersion, '0.21.0');
+    assert.equal(updaterStatus.currentVersion, '0.22.0');
+    const accessStatus = await client.evaluate('window.desktop.getComputerAccess()');
+    assert.equal(accessStatus.enabled, false);
 
     const originalRoleValue = await client.evaluate("document.querySelector('#task-form [name=\"agent\"] option').value");
     await client.evaluate("window.AppI18n.setLanguage('en-US'); true");
@@ -318,9 +325,11 @@ async function main() {
 
     await client.evaluate("document.querySelector('[data-workflow-mode=\"image\"]').click(); true");
     await delay(150);
-    const imageMode = await client.evaluate("({ mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length })");
+    const imageMode = await client.evaluate("({ mode: currentWorkflow.mode, manager: currentWorkflow.nodes.some((node) => node.manager), edges: currentWorkflow.edges.length, width: currentWorkflow.template.width, height: currentWorkflow.template.height, ports: document.querySelectorAll('.media-port').length, parameters: !document.querySelector('#workflow-parameter-editor').hidden, library: !document.querySelector('#media-node-library').hidden, viewportHeight: document.querySelector('#workflow-viewport').getBoundingClientRect().height })");
     assert.equal(imageMode.mode, "image");
     assert.ok(imageMode.manager && imageMode.edges > 0);
+    assert.equal(imageMode.width, 3400); assert.equal(imageMode.height, 2100);
+    assert.ok(imageMode.ports > 10 && imageMode.library && imageMode.viewportHeight >= 650);
     await client.evaluate("window.AppI18n.setLanguage('en-US'); location.reload(); true");
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await delay(100);
@@ -330,6 +339,13 @@ async function main() {
     assert.equal(persistedLanguage.language, "en-US");
     assert.equal(persistedLanguage.lang, "en-US");
     assert.match(persistedLanguage.title, /Project Workspace/);
+    const mediaResidual = await client.evaluate(`(() => {
+      const values = []; const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let node;
+      while ((node = walker.nextNode())) { if (!['SCRIPT','STYLE'].includes(node.parentElement?.tagName) && /[\u4e00-\u9fff]/.test(node.nodeValue || '')) values.push(node.nodeValue.trim()); }
+      for (const element of document.querySelectorAll('*')) for (const attribute of ['placeholder','title','aria-label']) { const value=element.getAttribute(attribute)||''; if (/[\u4e00-\u9fff]/.test(value)) values.push(value); }
+      return [...new Set(values)].filter(Boolean).slice(0,80);
+    })()`);
+    assert.deepEqual(mediaResidual, []);
     console.log("通过：Electron 主对话命令、长期记忆图谱、更新接口、独立媒体配置、双语切换、模型路由、拖动、动画连线与右键定位");
   } catch (error) {
     console.error(error);

@@ -1,15 +1,15 @@
 {
   "name": "ai-software-team",
-  "version": "0.21.0",
-  "description": "Windows 多智能体研发工作台：Agent 调度、语音交互、长期记忆知识图谱、可视化工作流、Skill 插件、执行沙箱与自动更新",
+  "version": "0.22.0",
+  "description": "Windows 多智能体研发工作台：真实 Agent 调度、文档与小说知识库、端口化媒体工作流、完全访问、配置保险箱、执行沙箱与自动更新",
   "main": "electron/main.js",
   "author": "AI Software Team",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "test": "node tests/workflow-state.test.js && node tests/i18n-core.test.js && node tests/model-settings-store.test.js && node tests/media-model-settings.test.js && node tests/voice-settings-store.test.js && node tests/voice-runtime.test.js && node tests/workspace-settings-store.test.js && node tests/model-pool-store.test.js && node tests/plugin-runtime.test.js && node tests/memory-graph-runtime.test.js && node tests/update-runtime.test.js && node tests/execution-runtime.test.js && node tests/model-runtime.integration.test.js && node tests/delivery-runtime.test.js && node tests/integration-runtime.test.js",
+    "test": "node tests/workflow-state.test.js && node tests/i18n-core.test.js && node tests/document-import-runtime.test.js && node tests/knowledge-library-runtime.test.js && node tests/settings-file-utils.test.js && node tests/configuration-vault-runtime.test.js && node tests/computer-access-runtime.test.js && node tests/media-generation-runtime.test.js && node tests/model-settings-store.test.js && node tests/media-model-settings.test.js && node tests/voice-settings-store.test.js && node tests/voice-runtime.test.js && node tests/workspace-settings-store.test.js && node tests/model-pool-store.test.js && node tests/plugin-runtime.test.js && node tests/memory-graph-runtime.test.js && node tests/update-runtime.test.js && node tests/execution-runtime.test.js && node tests/model-runtime.integration.test.js && node tests/delivery-runtime.test.js && node tests/integration-runtime.test.js",
     "test:electron": "node tests/electron-workflow-smoke.test.js",
-    "build:windows": "electron-builder --win nsis zip",
+    "build:windows": "electron-builder --win zip",
     "pack:windows": "electron-builder --win --dir"
   },
   "devDependencies": {
@@ -22,7 +22,7 @@
     "asar": true,
     "electronDist": "node_modules/electron/dist",
     "directories": {
-      "output": "release-v0.21"
+      "output": "release-v0.22"
     },
     "files": [
       "index.html",
@@ -41,18 +41,20 @@
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "artifactName": "${productName}-${version}-${arch}.${ext}"
-    },
-    "nsis": {
-      "artifactName": "${productName}-${version}-${arch}-setup.${ext}",
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "AI Software Team"
     }
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.0",
+    "mammoth": "^1.12.0",
+    "pdf-parse": "1.1.1",
+    "word-extractor": "^1.0.4"
   }
 }

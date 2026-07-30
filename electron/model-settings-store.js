@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { readJsonWithBackup, atomicWriteJson, removeJsonWithBackup } = require("./settings-file-utils");
 
 function createModelSettingsStore({ filePath, encrypt, decrypt }) {
   if (!filePath || typeof encrypt !== "function" || typeof decrypt !== "function") {
@@ -7,10 +8,7 @@ function createModelSettingsStore({ filePath, encrypt, decrypt }) {
   }
 
   function readRecord() {
-    if (!fs.existsSync(filePath)) return null;
-    const record = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (record?.version !== 1 || !record.encryptedApiKey) throw new Error("模型配置文件格式无效");
-    return record;
+    return readJsonWithBackup(filePath, (record) => record?.version === 1 && Boolean(record.encryptedApiKey), null);
   }
 
   function load() {
@@ -52,13 +50,12 @@ function createModelSettingsStore({ filePath, encrypt, decrypt }) {
       encryptedApiKey: encrypt(normalized.apiKey),
       updatedAt: new Date().toISOString(),
     };
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    atomicWriteJson(filePath, record);
     return normalized;
   }
 
   function clear() {
-    fs.rmSync(filePath, { force: true });
+    removeJsonWithBackup(filePath);
   }
 
   function status() {

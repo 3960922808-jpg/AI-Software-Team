@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { readJsonWithBackup, atomicWriteJson, removeJsonWithBackup } = require("./settings-file-utils");
 
 const DEFAULTS = Object.freeze({
   asrProvider: "openai",
@@ -25,10 +26,7 @@ function createVoiceSettingsStore({ filePath, encrypt, decrypt }) {
   if (!filePath || typeof encrypt !== "function" || typeof decrypt !== "function") throw new Error("语音配置存储初始化参数不完整");
 
   function readRecord() {
-    if (!fs.existsSync(filePath)) return null;
-    const record = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (record?.version !== 1) throw new Error("语音配置文件格式无效");
-    return record;
+    return readJsonWithBackup(filePath, (record) => record?.version === 1, null);
   }
 
   function load() {
@@ -84,12 +82,11 @@ function createVoiceSettingsStore({ filePath, encrypt, decrypt }) {
       autoSpeak: normalized.autoSpeak,
       updatedAt: new Date().toISOString(),
     };
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    atomicWriteJson(filePath, record);
     return status();
   }
 
-  function clear() { fs.rmSync(filePath, { force: true }); }
+  function clear() { removeJsonWithBackup(filePath); }
 
   function status() {
     const record = readRecord();

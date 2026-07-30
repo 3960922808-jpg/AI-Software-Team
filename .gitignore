@@ -12,3 +12,11 @@ __pycache__/
 release/
 release-v*/
 dist/
+model-settings.json
+model-pool.json
+image-model-settings.json
+video-model-settings.json
+voice-settings.json
+*.aiteam-config
+knowledge-library/
+computer-access/

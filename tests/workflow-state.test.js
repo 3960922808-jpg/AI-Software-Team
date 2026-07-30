@@ -50,7 +50,12 @@ for (const mode of ["image", "video"]) {
   const workflow = workflowState.build([], null, mode);
   const modeManager = workflow.nodes.find((node) => node.manager);
   assert.ok(modeManager);
-  assert.ok(workflow.edges.some((edge) => edge.from === modeManager.id));
+  assert.ok(workflow.edges.some((edge) => edge.to === modeManager.id));
+  assert.equal(workflow.template.width, 3400);
+  assert.equal(workflow.template.height, 2100);
+  assert.ok(workflow.nodes.some((node) => node.inputs.length && node.outputs.length));
+  assert.ok(workflow.edges.every((edge) => edge.sourcePort && edge.targetPort));
+  assert.ok(workflow.nodes.some((node) => node.parameterSchema.length));
 }
 
 console.log("可编辑工作流模板与分支结构测试通过");

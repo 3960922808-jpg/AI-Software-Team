@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, clipboard, desktopCapturer } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const modelRuntime = require("./model-runtime");
@@ -14,6 +14,10 @@ const { createMemoryGraphRuntime } = require("./memory-graph-runtime");
 const { createUpdateRuntime } = require("./update-runtime");
 const { createVoiceSettingsStore } = require("./voice-settings-store");
 const { createVoiceRuntime } = require("./voice-runtime");
+const { createKnowledgeLibraryRuntime } = require("./knowledge-library-runtime");
+const { createConfigurationVaultRuntime } = require("./configuration-vault-runtime");
+const { createComputerAccessRuntime } = require("./computer-access-runtime");
+const { createMediaGenerationRuntime } = require("./media-generation-runtime");
 
 let modelSettingsStore = null;
 let modelPoolStore = null;
@@ -25,6 +29,11 @@ let memoryGraphRuntime = null;
 let updateRuntime = null;
 let voiceSettingsStore = null;
 let voiceRuntime = null;
+let knowledgeLibraryRuntime = null;
+let configurationVaultRuntime = null;
+let computerAccessRuntime = null;
+let mediaGenerationRuntime = null;
+const computerAccessPermissions = new Map();
 let updateInstallStarted = false;
 
 if (process.env.AI_TEAM_SCREENSHOT) app.disableHardwareAcceleration();
@@ -96,6 +105,16 @@ function initializeModelSettings() {
     statePath: path.join(app.getPath("userData"), "plugins-state.json"),
   });
   memoryGraphRuntime = createMemoryGraphRuntime({ statePath: path.join(app.getPath("userData"), "memory-graph.json") });
+  knowledgeLibraryRuntime = createKnowledgeLibraryRuntime({ directoryPath: path.join(app.getPath("userData"), "knowledge-library") });
+  configurationVaultRuntime = createConfigurationVaultRuntime({ userDataPath: app.getPath("userData"), appVersion: app.getVersion() });
+  mediaGenerationRuntime = createMediaGenerationRuntime({
+    getConfiguration: (kind) => mediaModelStores?.[kind]?.load() || null,
+    getWorkspace: () => modelRuntime.getWorkspace().path,
+  });
+  computerAccessRuntime = createComputerAccessRuntime({
+    shell, clipboard, integrationRuntime, desktopCapturer,
+    captureDirectory: path.join(app.getPath("userData"), "computer-access", "screenshots"),
+  });
   updateRuntime = createUpdateRuntime({
     currentVersion: app.getVersion(),
     userDataPath: app.getPath("userData"),
@@ -141,6 +160,9 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
   });
 
   window.loadFile(path.join(__dirname, "..", "index.html"));
+  computerAccessPermissions.set(window.webContents.id, false);
+  const webContentsId = window.webContents.id;
+  window.webContents.once("destroyed", () => computerAccessPermissions.delete(webContentsId));
   window.webContents.session.setPermissionRequestHandler((_webContents, permission, callback) => callback(permission === "media"));
   window.once("ready-to-show", async () => {
     if (!splashWindow || splashWindow.isDestroyed()) { if (!process.env.AI_TEAM_SMOKE_TEST) window.show(); return; }
@@ -237,6 +259,7 @@ const createWindow = (splashWindow = null, startupStartedAt = Date.now()) => {
     if (url.startsWith("https://")) shell.openExternal(url);
     return { action: "deny" };
   });
+  window.webContents.once("destroyed", () => computerAccessPermissions.delete(window.webContents.id));
   window.webContents.on("will-navigate", (event, url) => {
     if (url !== window.webContents.getURL()) event.preventDefault();
   });
@@ -278,6 +301,14 @@ if (!app.requestSingleInstanceLock()) {
     });
     ipcMain.handle("model:status", () => ({ ...(modelSettingsStore?.status() || {}), ...modelRuntime.status() }));
     ipcMain.handle("model:test", () => modelRuntime.testConnection());
+    ipcMain.handle("model:test-config", async (_event, config) => {
+      if (!modelSettingsStore) initializeModelSettings();
+      const previous = modelSettingsStore.load();
+      const candidate = modelSettingsStore.merge(config);
+      modelRuntime.configure(candidate);
+      try { return await modelRuntime.testConnection(); }
+      finally { if (previous) modelRuntime.configure(previous); else modelRuntime.clear(); }
+    });
     ipcMain.handle("model-pool:get", () => modelPoolStore?.status() || { profiles: [], assignments: {} });
     ipcMain.handle("model-pool:save-profile", (_event, profile) => {
       if (!modelPoolStore) initializeModelSettings();
@@ -327,9 +358,25 @@ if (!app.requestSingleInstanceLock()) {
       const query = `${payload?.title || ""} ${payload?.description || ""}`.trim();
       return modelRuntime.executeTask({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context(query) || null });
     });
-    ipcMain.handle("agent:chat", (_event, payload) => {
+    ipcMain.handle("agent:chat", async (_event, payload) => {
       const query = payload?.messages?.at?.(-1)?.content || "";
-      return modelRuntime.chat({ ...payload, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context(query) || null });
+      const computerAccess = computerAccessPermissions.get(_event.sender.id) === true;
+      let computerResults = [];
+      let result = null;
+      const executed = new Set();
+      for (let round = 0; round < 3; round += 1) {
+        result = await modelRuntime.chat({ ...payload, computerAccess, computerResults, plugins: pluginRuntime?.context() || [], memoryGraph: memoryGraphRuntime?.context(query) || null });
+        const actions = computerAccess ? (result.computerActions || []).filter((action) => { const key = JSON.stringify(action); if (executed.has(key)) return false; executed.add(key); return true; }) : [];
+        if (!actions.length) break;
+        const roundResults = await computerAccessRuntime.execute(actions);
+        computerResults = [...computerResults, ...roundResults].slice(-20);
+      }
+      return { ...result, computerAccess, computerResults };
+    });
+    ipcMain.handle("computer-access:status", (event) => ({ enabled: computerAccessPermissions.get(event.sender.id) === true, sessionOnly: true }));
+    ipcMain.handle("computer-access:set", (event, enabled) => {
+      computerAccessPermissions.set(event.sender.id, enabled === true);
+      return { enabled: computerAccessPermissions.get(event.sender.id), sessionOnly: true };
     });
     ipcMain.handle("plugins:get", () => pluginRuntime?.status() || []);
     ipcMain.handle("plugins:set-enabled", (_event, pluginId, enabled) => pluginRuntime.setEnabled(pluginId, enabled));
@@ -381,6 +428,23 @@ if (!app.requestSingleInstanceLock()) {
       if (error) throw new Error(error);
       return { opened: true, path: target };
     });
+    ipcMain.handle("knowledge:get", () => knowledgeLibraryRuntime.list());
+    ipcMain.handle("knowledge:import", async () => {
+      const result = await dialog.showOpenDialog({
+        title: "导入知识文档或附件",
+        properties: ["openFile", "multiSelections"],
+        filters: [{ name: "文档与附件", extensions: ["txt", "md", "docx", "doc", "pdf", "pptx", "ppt", "rtf", "csv", "json", "html", "epub"] }, { name: "所有文件", extensions: ["*"] }]
+      });
+      if (result.canceled || !result.filePaths.length) return { canceled: true, documents: knowledgeLibraryRuntime.list() };
+      return { canceled: false, ...(await knowledgeLibraryRuntime.importFiles(result.filePaths)) };
+    });
+    ipcMain.handle("knowledge:migrate", (_event, documents) => knowledgeLibraryRuntime.migrate(documents));
+    ipcMain.handle("knowledge:delete", (_event, id) => knowledgeLibraryRuntime.remove(String(id || "")));
+    ipcMain.handle("knowledge:open", async (_event, id) => {
+      const target = knowledgeLibraryRuntime.attachmentPath(String(id || ""));
+      const error = await shell.openPath(target); if (error) throw new Error(error);
+      return { opened: true, path: target };
+    });
     ipcMain.handle("workspace:choose", async () => {
       const result = await dialog.showOpenDialog({ title: "选择 Agent 产物工作目录", properties: ["openDirectory", "createDirectory"] });
       if (result.canceled) return modelRuntime.getWorkspace();
@@ -396,6 +460,31 @@ if (!app.requestSingleInstanceLock()) {
       const result = await voiceRuntime.synthesize(payload);
       return { ...result, audio: new Uint8Array(result.audio) };
     });
+    ipcMain.handle("media:execute-workflow", (_event, kind, payload) => mediaGenerationRuntime.execute(kind, payload));
+    ipcMain.handle("media:open-output", async (_event, filePath) => {
+      const workspace = modelRuntime.getWorkspace().path;
+      if (!workspace) throw new Error("尚未选择 Agent 产物目录");
+      const target = path.resolve(String(filePath || ""));
+      if (target !== workspace && !target.startsWith(`${path.resolve(workspace)}${path.sep}`)) throw new Error("媒体产物路径越界");
+      const error = await shell.openPath(target); if (error) throw new Error(error);
+      return { opened: true };
+    });
+    ipcMain.handle("config-vault:status", () => configurationVaultRuntime.status());
+    ipcMain.handle("config-vault:open", async () => {
+      const target = app.getPath("userData"); const error = await shell.openPath(target); if (error) throw new Error(error);
+      return { opened: true, path: target };
+    });
+    ipcMain.handle("config-vault:export", async () => {
+      const result = await dialog.showSaveDialog({ title: "导出本机加密模型配置", defaultPath: `AI-Team-model-settings-${new Date().toISOString().slice(0, 10)}.aiteam-config`, filters: [{ name: "AI Team 加密配置", extensions: ["aiteam-config"] }] });
+      if (result.canceled || !result.filePath) return { canceled: true };
+      return { canceled: false, ...configurationVaultRuntime.exportBundle(result.filePath) };
+    });
+    ipcMain.handle("config-vault:import", async () => {
+      const result = await dialog.showOpenDialog({ title: "导入本机加密模型配置", properties: ["openFile"], filters: [{ name: "AI Team 加密配置", extensions: ["aiteam-config"] }] });
+      if (result.canceled || !result.filePaths[0]) return { canceled: true };
+      return { canceled: false, ...configurationVaultRuntime.importBundle(result.filePaths[0]) };
+    });
+    ipcMain.handle("app:relaunch", () => { app.relaunch(); app.exit(0); });
     ipcMain.handle("delivery:inspect", () => deliveryRuntime.inspect(modelRuntime.getWorkspace().path));
     ipcMain.handle("delivery:create", (_event, payload) => deliveryRuntime.createRelease(modelRuntime.getWorkspace().path, payload));
     ipcMain.handle("delivery:open", async (_event, candidate) => {

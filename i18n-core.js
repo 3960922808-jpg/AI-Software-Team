@@ -221,7 +221,42 @@
     ["关系类型", "Relationship types"], ["包含", "Contains"], ["引用", "References"], ["概念", "Concepts"],
     ["适应画布", "Fit graph"], ["重置布局", "Reset layout"], ["关联节点", "Connected nodes"],
     ["暂无关联节点", "No connected nodes"], ["没有匹配节点", "No matching nodes"],
-    ["本地", "Local"], ["自定义 Skill", "Custom Skill"]
+    ["本地", "Local"], ["自定义 Skill", "Custom Skill"],
+    ["完全访问：关闭", "Full access: Off"], ["完全访问：开启", "Full access: On"],
+    ["临时授予读取文件、网页和操作电脑的权限", "Temporarily allow file and web reading plus computer control"],
+    ["导入文件或小说", "Import files or novels"],
+    ["支持任意附件，并可提取 TXT、DOCX、DOC、PDF、PPTX、PPT 正文。长篇小说与原始文件保存在本机知识库，不占用浏览器存储。", "Supports any attachment and extracts text from TXT, DOCX, DOC, PDF, PPTX, and PPT. Long novels and source files stay in the local knowledge library."],
+    ["本机配置保险箱", "Local Configuration Vault"], ["模型配置与更新隔离", "Update-safe model configuration"],
+    ["正在读取 Windows 用户数据目录…", "Reading the Windows user-data directory..."],
+    ["密钥由 Windows 系统加密，只保存在当前电脑；软件升级不会覆盖，也不会提交到 GitHub。", "Keys are encrypted by Windows and kept only on this computer. Updates do not overwrite them, and they are never committed to GitHub."],
+    ["已保存配置", "Saved configurations"], ["自动备份", "Automatic backups"], ["打开配置目录", "Open configuration folder"],
+    ["导出加密配置", "Export encrypted settings"], ["导入加密配置", "Import encrypted settings"],
+    ["媒体节点", "Media nodes"], ["拖拽编排 · 端口连线", "Drag to arrange · Connect ports"], ["媒体节点库", "Media node library"],
+    ["生图节点库", "Image node library"], ["视频节点库", "Video node library"], ["节点参数", "Node parameters"],
+    ["生成结果", "Generation result"], ["等待执行媒体工作流", "Waiting to run the media workflow"], ["打开产物", "Open output"],
+    ["提交生图队列", "Submit image queue"], ["提交视频队列", "Submit video queue"], ["正在提交", "Submitting"],
+    ["正在校验节点参数并调用媒体模型…", "Validating node parameters and calling the media model..."],
+    ["等待生成", "Waiting to generate"], ["生成已提交", "Generation submitted"], ["打开原文件", "Open source file"],
+    ["正文已截断", "Text truncated"], ["入", "in"], ["出", "out"], ["开启", "On"], ["关闭", "Off"],
+    ["生图节点工作流", "Image node workflow"], ["端口化生图节点、参数与真实生成队列", "Port-based image nodes, parameters, and a real generation queue"],
+    ["视频节点工作流", "Video node workflow"], ["端口化视频节点、运动参数与真实生成队列", "Port-based video nodes, motion parameters, and a real generation queue"],
+    ["加载生图模型", "Load image model"], ["使用设置中的生图模型与编码器", "Use the image model and encoder from Settings"], ["CLIP 跳过层", "CLIP skip"],
+    ["正向提示词", "Positive prompt"], ["描述主体、构图、光线和细节", "Describe the subject, composition, lighting, and details"], ["提示词", "Prompt"],
+    ["负向提示词", "Negative prompt"], ["排除瑕疵、错误文字和不需要的元素", "Exclude defects, incorrect text, and unwanted elements"], ["排除内容", "Exclude"],
+    ["空潜空间", "Empty latent image"], ["设置图片尺寸与生成数量", "Set image dimensions and batch size"], ["宽度", "Width"], ["高度", "Height"], ["数量", "Batch size"],
+    ["采样器", "Sampler"], ["控制步数、引导强度、随机种子和调度器", "Control steps, guidance, seed, and scheduler"], ["随机种子", "Seed"], ["采样步数", "Sampling steps"], ["提示词引导", "Prompt guidance"], ["调度器", "Scheduler"],
+    ["VAE 解码", "VAE Decode"], ["把潜空间样本还原为图片", "Decode latent samples into an image"], ["高清放大", "Upscale"], ["按比例放大并增强细节", "Scale up and enhance details"], ["放大倍数", "Scale"], ["缩放算法", "Resize method"],
+    ["保存图片", "Save image"], ["保存到用户选择的 Agent 产物目录", "Save to the selected agent output folder"], ["文件名前缀", "Filename prefix"], ["图片预览", "Image preview"], ["显示最近一次真实生成结果", "Show the latest real generation result"],
+    ["生成队列", "Generation queue"], ["校验节点并提交真实生图请求", "Validate nodes and submit a real image request"], ["校验节点并提交真实视频生成请求", "Validate nodes and submit a real video request"],
+    ["加载视频模型", "Load video model"], ["使用设置中的视频生成模型", "Use the video model from Settings"], ["视频提示词", "Video prompt"], ["描述主体动作、镜头运动、场景和风格", "Describe subject motion, camera movement, scene, and style"],
+    ["排除闪烁、形变和不稳定运动", "Exclude flicker, deformation, and unstable motion"], ["参考首帧", "Reference frame"], ["可选的图生视频参考图", "Optional image-to-video reference"], ["参考图路径", "Reference image path"],
+    ["运动与镜头", "Motion and camera"], ["设置时长、画幅和运动强度", "Set duration, aspect ratio, and motion strength"], ["时长（秒）", "Duration (seconds)"], ["画幅", "Aspect ratio"], ["运动强度", "Motion strength"], ["帧率", "Frame rate"],
+    ["视频采样器", "Video sampler"], ["提交模型、条件、运动和随机种子", "Submit model, conditioning, motion, and seed"], ["视频解码", "Video decode"], ["把模型结果解码为连续画面", "Decode model output into frames"],
+    ["补帧与稳定", "Interpolation and stabilization"], ["提升帧率并减少画面闪烁", "Increase frame rate and reduce flicker"], ["补帧倍数", "Interpolation multiplier"], ["画面稳定", "Stabilize video"],
+    ["配音与字幕", "Voiceover and subtitles"], ["可选配音、字幕和音轨合成", "Optional voiceover, subtitles, and audio mix"], ["生成字幕", "Generate subtitles"], ["生成配音", "Generate voiceover"],
+    ["导出视频", "Export video"], ["编码并保存到 Agent 产物目录", "Encode and save to the agent output folder"], ["容器", "Container"], ["编码", "Codec"],
+    ["未设置", "Not set"], ["低质量，模糊，变形，错误文字", "low quality, blurry, deformed, incorrect text"], ["闪烁，抖动，变形，低质量", "flicker, shake, deformation, low quality"],
+    ["该节点没有启用技能", "No skills are enabled for this node"], ["语音配置已安全恢复，录音和朗读可以直接使用。", "Voice settings were restored securely. Recording and speech are ready to use."]
   ]);
 
   const patterns = [
@@ -246,6 +281,11 @@
     [/^确定删除 (.+) 吗？$/, "Delete $1?"], [/^确定从当前工作流删除“(.+)”吗？$/, "Remove “$1” from the current workflow?"],
     [/^(\d+) 分钟前$/, "$1 minutes ago"], [/^(\d+) 小时前$/, "$1 hours ago"],
     [/^(.+) · (\d+)%$/, "$1 · $2%"], [/^产物：(.+)$/, "Artifacts: $1"], [/^执行：(.+)$/, "Run: $1"]
+    ,[/^(\d+) 入$/, "$1 in"], [/^(\d+) 出$/, "$1 out"], [/^(.+) 副本$/, "$1 copy"],
+    [/^生成失败：(.+)$/, "Generation failed: $1"], [/^知识库加载失败：(.+)$/, "Knowledge library failed to load: $1"],
+    [/^配置保险箱读取失败：(.+)$/, "Configuration vault failed to load: $1"],
+    [/^保存成功 · (.+) · 继续使用原密钥$/, "Saved · $1 · Existing key retained"],
+    [/^保存成功 · (.+) · 已更新密钥$/, "Saved · $1 · Key updated"]
   ];
 
   function translate(value, language = "en-US") {
@@ -253,7 +293,7 @@
     if (language !== "en-US" || !source) return source;
     if (translations.has(source)) return translations.get(source);
     for (const [pattern, replacement] of patterns) if (pattern.test(source)) return source.replace(pattern, replacement);
-    for (const separator of [" → ", " · ", "，"]) {
+    for (const separator of [" → ", " · ", "，", ": "]) {
       if (!source.includes(separator)) continue;
       const parts = source.split(separator);
       const translatedParts = parts.map((part) => translate(part, language));

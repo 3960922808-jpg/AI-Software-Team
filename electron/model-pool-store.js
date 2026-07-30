@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { readJsonWithBackup, atomicWriteJson, removeJsonWithBackup } = require("./settings-file-utils");
 
 function createModelPoolStore({ filePath, encrypt, decrypt }) {
   if (!filePath || typeof encrypt !== "function" || typeof decrypt !== "function") {
@@ -12,12 +13,7 @@ function createModelPoolStore({ filePath, encrypt, decrypt }) {
   }
 
   function readRecord() {
-    if (!fs.existsSync(filePath)) return emptyRecord();
-    const record = JSON.parse(fs.readFileSync(filePath, "utf8"));
-    if (record?.version !== 1 || !Array.isArray(record.profiles) || typeof record.assignments !== "object") {
-      throw new Error("模型池配置文件格式无效");
-    }
-    return record;
+    return readJsonWithBackup(filePath, (record) => record?.version === 1 && Array.isArray(record.profiles) && typeof record.assignments === "object", emptyRecord());
   }
 
   function normalizeProfile(next, current = null) {
@@ -50,8 +46,7 @@ function createModelPoolStore({ filePath, encrypt, decrypt }) {
 
   function writeRecord(record) {
     const next = { ...record, version: 1, updatedAt: new Date().toISOString() };
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    atomicWriteJson(filePath, next);
     return next;
   }
 
@@ -121,7 +116,7 @@ function createModelPoolStore({ filePath, encrypt, decrypt }) {
   }
 
   function clear() {
-    fs.rmSync(filePath, { force: true });
+    removeJsonWithBackup(filePath);
   }
 
   return { load, status, saveProfile, deleteProfile, assign, clear };

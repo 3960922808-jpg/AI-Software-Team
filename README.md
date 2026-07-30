@@ -4,7 +4,7 @@
 
 主 Agent 负责理解目标、拆解任务与最终审查；10 个专业 Agent 使用各自的模型路由和特调 Skill 完成产品、架构、前端、后端、数据库、测试、安全、代码审查与交付工作。所有执行步骤、文件产物、真实检查、自动修复和 Git 快照都有记录。
 
-> 当前版本：`v0.21.0` · 支持简体中文和英文 · 支持 ZIP 免安装版与 Windows 安装版
+> 当前版本：`v0.22.0` · 支持简体中文和英文 · 提供 Windows x64 ZIP 免安装版
 
 ## 下载
 
@@ -31,15 +31,26 @@
 - 生图与视频使用各自独立的 API Key，不与主模型共享。
 - 语音识别与语音合成拥有独立服务、模型和 API Key，不与其他模型共享。
 - API Key 和 GitHub Token 由 Electron 主进程调用 Windows 加密服务持久化，前端无法读取明文。
+- 主模型、模型池、生图、视频和语音配置保存在 Windows 用户数据目录，采用原子写入与 `.bak` 自动恢复；版本更新不会覆盖本机配置。
+- 设置页的本机配置保险箱可以查看持久化状态、打开目录，并导入或导出绑定当前 Windows 用户的加密配置。
 - Agent 产物目录由用户自由选择，每个任务写入独立的 `.ai-team-output/<任务 ID>`。
 
 ### Agent 工作室与可视化工作流
 
 - Agent 工作室以办公室和主对话框为中心，可查看 10 个 Agent 的真实任务状态、进度和工作反馈。
 - 工作室与工作流对话都支持 `@Agent` 单独派活和 `/Skill` 调用技能，自动补全来自当前 Agent 与已启用 Skill。
-- 可视化工作流支持软件研发、生图和视频模板。
+- 可视化工作流支持软件研发、生图和视频模板；图片与视频模式使用 `3400 × 2100` 大画布和类似 ComfyUI 的端口节点编排。
 - 节点可拖动、添加、编辑、删除和调整进度；连线可创建、预览和删除。
+- 媒体节点显示输入/输出端口，支持按端口自定义连线、节点库复制、提示词/尺寸/采样/运动/导出参数编辑和流动连线动画。
+- 图片工作流可调用真实生图 API 并保存、预览结果；视频工作流可保存直接返回的视频，或展示服务商任务编号。
 - 每个工作流节点都能查看模型路由、Skill、执行证据、产物与真实检查结果。
+
+### 会话级完全访问
+
+- 工作室和工作流两个 AI 对话框都提供“完全访问”开关，状态实时同步。
+- 权限每次启动默认关闭，不写入任何持久化存储；关闭后主进程立即拒绝新的电脑动作。
+- 用户确认开启后，Agent 可以按白名单读取文件与文件夹、读取公开网页、打开应用或路径、查看窗口、操作剪贴板、输入文字、发送快捷键、点击坐标和读取屏幕。
+- 主进程会再次校验每个动作，每轮最多执行 8 个动作；对话中会显示真实成功或失败记录。
 
 ### 真实语音交互
 
@@ -62,6 +73,13 @@
 - 支持适应画布、重置布局、鼠标位置缩放，以及孤立节点、失效引用、超大文件和截断原因诊断。
 - 忽略 `.git`、`node_modules`、构建目录、缓存和大型文件。
 - 图谱持久化到当前 Windows 用户数据目录，并按当前任务或对话的相关性进入主 Agent 与子 Agent 长期上下文。
+
+知识文档库与图谱分开保存，适合产品资料、论文和长篇小说：
+
+- 任意文件都能作为原始附件导入，单文件上限 200 MB。
+- 可提取 TXT、Markdown、DOCX、DOC、PDF、PPTX、PPT、CSV、JSON、HTML 等正文；旧版 PPT 会尝试调用本机 PowerPoint 或 WPS。
+- 单篇正文最多保留约 400 万字符，原文件、提取正文和索引均位于本机用户数据目录，不再受浏览器存储容量限制。
+- 提取失败的格式仍会保留原附件、原因和元数据，可随时打开原文件。
 
 语音与记忆职责分层参考了白龙马系开源项目 [okbabybo/nanai](https://github.com/okbabybo/nanai) 的设计思路。本项目针对现有 Electron 安全边界、模型池和桌面交互重新实现，没有引入其 Python 语音服务或直接复制业务模块。
 
@@ -132,7 +150,7 @@ pnpm run test:electron
 pnpm run build:windows
 ```
 
-输出位于 `release-v0.21/`，同时生成 Windows 安装版和 x64 ZIP 免安装版。GitHub Release 只发布 ZIP 免安装包。
+输出位于 `release-v0.22/`，生成 x64 ZIP 免安装版。GitHub Release 只发布 ZIP 包。
 
 开发环境可以参考 `.env.example` 设置主模型后备配置。仓库中不要提交 API Key、GitHub Token、`.env` 或其他真实密钥。
 
@@ -140,7 +158,7 @@ pnpm run build:windows
 
 AI Software Team is a native Windows multi-agent software development workspace built with Electron. A primary agent decomposes and routes user goals to ten specialist agents, which generate real files, run controlled checks, repair failures, create Git snapshots, and produce auditable delivery records.
 
-Version `0.21.0` adds real microphone transcription and agent speech playback with separately encrypted ASR/TTS settings. It also rebuilds the long-term memory graph with asynchronous indexing, relevance-ranked retrieval, persistent layouts, search focus, relationship filters, graph diagnostics, and query-aware memory injection. The entire interface can switch between Simplified Chinese and English from Settings.
+Version `0.22.0` adds a persistent document and novel library with TXT, DOCX, DOC, PDF, PPTX, and PPT extraction; a ComfyUI-style large-canvas image/video workflow with ports and editable parameters; session-only full computer access that is off by default; real media generation queues; and an update-safe encrypted configuration vault with automatic backup recovery. The entire interface can switch between Simplified Chinese and English from Settings.
 
 Download the latest Windows build from [Releases](https://github.com/3960922808-jpg/AI-Software-Team/releases).
 

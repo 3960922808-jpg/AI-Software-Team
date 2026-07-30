@@ -27,35 +27,62 @@
     return { id: "software", name: "软件研发", description: "经理调度 10 个专业 Agent", width: 1500, height: 1120, nodes: [manager, ...agents, ...modules], edges };
   }
 
-  function createMediaTemplate(id, name, description, workers) {
-    const manager = { id: `${id}-manager`, code: "DIR", title: `${name}导演 Agent`, subtitle: description, type: "manager", manager: true, x: 40, y: 330, width: 240 };
-    const agents = workers.map(([nodeId, code, title, role, subtitle], index) => ({ id: nodeId, code, title, role, subtitle, type: "agent", x: 390, y: 40 + index * 130, width: 220 }));
-    const modules = workers.map(([nodeId, , title, role], index) => ({ id: `${nodeId}-output`, code: `T${index + 1}`, title: `${title.replace(" Agent", "")}任务`, subtitle: `${role}负责的可编辑任务板块`, sourceNode: nodeId, sourceRole: role, type: "module", x: 830, y: 40 + index * 130, width: 230 }));
+  function createMediaTemplate(id, name, description, nodes, edges) {
     return {
-      id, name, description, width: 1500, height: Math.max(860, workers.length * 130 + 120),
-      nodes: [manager, ...agents, ...modules],
-      edges: [...workers.map(([nodeId]) => ({ from: manager.id, to: nodeId, kind: "branch" })), ...workers.map(([nodeId]) => ({ from: nodeId, to: `${nodeId}-output`, kind: "output" }))]
+      id, name, description, width: 3400, height: 2100,
+      nodes: nodes.map((node) => ({ type: "media", width: 290, height: 160, inputs: [], outputs: [], parameters: {}, parameterSchema: [], ...node })),
+      edges: edges.map((edge, index) => ({ id: `${id}-edge-${index + 1}`, kind: "media", state: "idle", ...edge }))
     };
   }
 
+  const imageNodes = [
+    { id: "image-checkpoint", code: "MODEL", title: "加载生图模型", subtitle: "使用设置中的生图模型与编码器", x: 120, y: 720, outputs: ["MODEL", "CLIP", "VAE"], parameters: { clipSkip: 1 }, parameterSchema: [{ key: "clipSkip", label: "CLIP 跳过层", type: "number", min: 1, max: 12 }] },
+    { id: "image-positive", code: "TEXT+", title: "正向提示词", subtitle: "描述主体、构图、光线和细节", role: "产品经理 Agent", x: 520, y: 260, width: 360, height: 270, inputs: ["CLIP"], outputs: ["CONDITIONING"], parameters: { prompt: "" }, parameterSchema: [{ key: "prompt", label: "提示词", type: "textarea", rows: 8 }] },
+    { id: "image-negative", code: "TEXT-", title: "负向提示词", subtitle: "排除瑕疵、错误文字和不需要的元素", role: "测试 Agent", x: 520, y: 620, width: 360, height: 240, inputs: ["CLIP"], outputs: ["CONDITIONING"], parameters: { negativePrompt: "低质量，模糊，变形，错误文字" }, parameterSchema: [{ key: "negativePrompt", label: "排除内容", type: "textarea", rows: 6 }] },
+    { id: "image-latent", code: "LATENT", title: "空潜空间", subtitle: "设置图片尺寸与生成数量", x: 540, y: 1020, inputs: [], outputs: ["LATENT"], parameters: { width: 1024, height: 1024, batch: 1 }, parameterSchema: [{ key: "width", label: "宽度", type: "number", min: 256, max: 4096, step: 64 }, { key: "height", label: "高度", type: "number", min: 256, max: 4096, step: 64 }, { key: "batch", label: "数量", type: "number", min: 1, max: 4 }] },
+    { id: "image-sampler", code: "KSampler", title: "采样器", subtitle: "控制步数、引导强度、随机种子和调度器", role: "技术主管 Agent", x: 1080, y: 600, width: 350, height: 350, inputs: ["MODEL", "POSITIVE", "NEGATIVE", "LATENT"], outputs: ["SAMPLES"], parameters: { seed: -1, steps: 28, cfg: 7, sampler: "euler", scheduler: "normal" }, parameterSchema: [{ key: "seed", label: "随机种子", type: "number" }, { key: "steps", label: "采样步数", type: "number", min: 1, max: 150 }, { key: "cfg", label: "提示词引导", type: "number", min: 1, max: 30, step: 0.5 }, { key: "sampler", label: "采样器", type: "select", options: ["euler", "euler_a", "dpmpp_2m", "ddim"] }, { key: "scheduler", label: "调度器", type: "select", options: ["normal", "karras", "exponential", "sgm_uniform"] }] },
+    { id: "image-decode", code: "VAE", title: "VAE 解码", subtitle: "把潜空间样本还原为图片", x: 1580, y: 670, inputs: ["SAMPLES", "VAE"], outputs: ["IMAGE"] },
+    { id: "image-upscale", code: "UPSCALE", title: "高清放大", subtitle: "按比例放大并增强细节", x: 1970, y: 500, inputs: ["IMAGE"], outputs: ["IMAGE"], parameters: { scale: 1, method: "lanczos" }, parameterSchema: [{ key: "scale", label: "放大倍数", type: "number", min: 1, max: 4, step: 0.5 }, { key: "method", label: "缩放算法", type: "select", options: ["lanczos", "bicubic", "nearest-exact"] }] },
+    { id: "image-save", code: "SAVE", title: "保存图片", subtitle: "保存到用户选择的 Agent 产物目录", role: "DevOps Agent", x: 2420, y: 430, inputs: ["IMAGE"], outputs: ["FILE"], parameters: { prefix: "AI-Team" }, parameterSchema: [{ key: "prefix", label: "文件名前缀", type: "text" }] },
+    { id: "image-preview", code: "VIEW", title: "图片预览", subtitle: "显示最近一次真实生成结果", x: 2420, y: 760, width: 330, height: 220, inputs: ["IMAGE"], outputs: [] },
+    { id: "image-manager", code: "QUEUE", title: "生成队列", subtitle: "校验节点并提交真实生图请求", manager: true, x: 2860, y: 430, width: 300, height: 190, inputs: ["FILE"], outputs: ["RESULT"] }
+  ];
+  const imageEdges = [
+    { from: "image-checkpoint", to: "image-positive", sourcePort: "CLIP", targetPort: "CLIP" }, { from: "image-checkpoint", to: "image-negative", sourcePort: "CLIP", targetPort: "CLIP" },
+    { from: "image-checkpoint", to: "image-sampler", sourcePort: "MODEL", targetPort: "MODEL" }, { from: "image-positive", to: "image-sampler", sourcePort: "CONDITIONING", targetPort: "POSITIVE" },
+    { from: "image-negative", to: "image-sampler", sourcePort: "CONDITIONING", targetPort: "NEGATIVE" }, { from: "image-latent", to: "image-sampler", sourcePort: "LATENT", targetPort: "LATENT" },
+    { from: "image-sampler", to: "image-decode", sourcePort: "SAMPLES", targetPort: "SAMPLES" }, { from: "image-checkpoint", to: "image-decode", sourcePort: "VAE", targetPort: "VAE" },
+    { from: "image-decode", to: "image-upscale", sourcePort: "IMAGE", targetPort: "IMAGE" }, { from: "image-upscale", to: "image-save", sourcePort: "IMAGE", targetPort: "IMAGE" },
+    { from: "image-upscale", to: "image-preview", sourcePort: "IMAGE", targetPort: "IMAGE" }, { from: "image-save", to: "image-manager", sourcePort: "FILE", targetPort: "FILE" }
+  ];
+
+  const videoNodes = [
+    { id: "video-model", code: "MODEL", title: "加载视频模型", subtitle: "使用设置中的视频生成模型", x: 120, y: 780, outputs: ["MODEL", "ENCODER"] },
+    { id: "video-prompt", code: "TEXT+", title: "视频提示词", subtitle: "描述主体动作、镜头运动、场景和风格", role: "产品经理 Agent", x: 500, y: 250, width: 370, height: 280, inputs: ["ENCODER"], outputs: ["CONDITIONING"], parameters: { prompt: "" }, parameterSchema: [{ key: "prompt", label: "视频提示词", type: "textarea", rows: 8 }] },
+    { id: "video-negative", code: "TEXT-", title: "负向提示词", subtitle: "排除闪烁、形变和不稳定运动", x: 500, y: 620, width: 370, height: 230, inputs: ["ENCODER"], outputs: ["CONDITIONING"], parameters: { negativePrompt: "闪烁，抖动，变形，低质量" }, parameterSchema: [{ key: "negativePrompt", label: "排除内容", type: "textarea", rows: 5 }] },
+    { id: "video-reference", code: "IMAGE", title: "参考首帧", subtitle: "可选的图生视频参考图", x: 500, y: 1030, inputs: [], outputs: ["IMAGE"], parameters: { path: "" }, parameterSchema: [{ key: "path", label: "参考图路径", type: "text" }] },
+    { id: "video-motion", code: "MOTION", title: "运动与镜头", subtitle: "设置时长、画幅和运动强度", x: 940, y: 1010, width: 320, height: 260, inputs: ["IMAGE"], outputs: ["MOTION"], parameters: { duration: 5, ratio: "16:9", motion: 5, fps: 24 }, parameterSchema: [{ key: "duration", label: "时长（秒）", type: "number", min: 1, max: 60 }, { key: "ratio", label: "画幅", type: "select", options: ["16:9", "9:16", "1:1", "4:3"] }, { key: "motion", label: "运动强度", type: "number", min: 1, max: 10 }, { key: "fps", label: "帧率", type: "number", min: 12, max: 60 }] },
+    { id: "video-sampler", code: "SAMPLE", title: "视频采样器", subtitle: "提交模型、条件、运动和随机种子", role: "技术主管 Agent", x: 1260, y: 600, width: 360, height: 340, inputs: ["MODEL", "POSITIVE", "NEGATIVE", "MOTION"], outputs: ["LATENT_VIDEO"], parameters: { seed: -1, steps: 30, cfg: 6 }, parameterSchema: [{ key: "seed", label: "随机种子", type: "number" }, { key: "steps", label: "采样步数", type: "number", min: 1, max: 150 }, { key: "cfg", label: "提示词引导", type: "number", min: 1, max: 30, step: 0.5 }] },
+    { id: "video-decode", code: "DECODE", title: "视频解码", subtitle: "把模型结果解码为连续画面", x: 1740, y: 660, inputs: ["LATENT_VIDEO"], outputs: ["FRAMES"] },
+    { id: "video-interpolate", code: "RIFE", title: "补帧与稳定", subtitle: "提升帧率并减少画面闪烁", x: 2110, y: 520, inputs: ["FRAMES"], outputs: ["FRAMES"], parameters: { multiplier: 2, stabilize: true }, parameterSchema: [{ key: "multiplier", label: "补帧倍数", type: "number", min: 1, max: 4 }, { key: "stabilize", label: "画面稳定", type: "checkbox" }] },
+    { id: "video-audio", code: "AUDIO", title: "配音与字幕", subtitle: "可选配音、字幕和音轨合成", role: "后端 Agent", x: 2100, y: 920, width: 330, height: 250, inputs: ["FRAMES"], outputs: ["TIMELINE"], parameters: { subtitles: true, voiceover: false }, parameterSchema: [{ key: "subtitles", label: "生成字幕", type: "checkbox" }, { key: "voiceover", label: "生成配音", type: "checkbox" }] },
+    { id: "video-export", code: "EXPORT", title: "导出视频", subtitle: "编码并保存到 Agent 产物目录", role: "DevOps Agent", x: 2550, y: 650, width: 320, height: 260, inputs: ["FRAMES", "TIMELINE"], outputs: ["FILE"], parameters: { format: "mp4", codec: "h264" }, parameterSchema: [{ key: "format", label: "容器", type: "select", options: ["mp4", "webm"] }, { key: "codec", label: "编码", type: "select", options: ["h264", "h265", "vp9"] }] },
+    { id: "video-manager", code: "QUEUE", title: "生成队列", subtitle: "校验节点并提交真实视频生成请求", manager: true, x: 2980, y: 650, width: 300, height: 190, inputs: ["FILE"], outputs: ["RESULT"] }
+  ];
+  const videoEdges = [
+    { from: "video-model", to: "video-prompt", sourcePort: "ENCODER", targetPort: "ENCODER" }, { from: "video-model", to: "video-negative", sourcePort: "ENCODER", targetPort: "ENCODER" },
+    { from: "video-model", to: "video-sampler", sourcePort: "MODEL", targetPort: "MODEL" }, { from: "video-prompt", to: "video-sampler", sourcePort: "CONDITIONING", targetPort: "POSITIVE" },
+    { from: "video-negative", to: "video-sampler", sourcePort: "CONDITIONING", targetPort: "NEGATIVE" }, { from: "video-reference", to: "video-motion", sourcePort: "IMAGE", targetPort: "IMAGE" },
+    { from: "video-motion", to: "video-sampler", sourcePort: "MOTION", targetPort: "MOTION" }, { from: "video-sampler", to: "video-decode", sourcePort: "LATENT_VIDEO", targetPort: "LATENT_VIDEO" },
+    { from: "video-decode", to: "video-interpolate", sourcePort: "FRAMES", targetPort: "FRAMES" }, { from: "video-interpolate", to: "video-export", sourcePort: "FRAMES", targetPort: "FRAMES" },
+    { from: "video-interpolate", to: "video-audio", sourcePort: "FRAMES", targetPort: "FRAMES" }, { from: "video-audio", to: "video-export", sourcePort: "TIMELINE", targetPort: "TIMELINE" },
+    { from: "video-export", to: "video-manager", sourcePort: "FILE", targetPort: "FILE" }
+  ];
+
   const templates = {
     software: createSoftwareTemplate(),
-    image: createMediaTemplate("image", "生图", "从提示词到成图验收的可编辑流程", [
-      ["image-prompt", "PT", "提示词 Agent", "产品经理 Agent", "整理主题、主体、构图和限制词"],
-      ["image-style", "ST", "视觉风格 Agent", "前端 Agent", "确定风格、配色、镜头和参考方向"],
-      ["image-model", "IM", "生图模型 Agent", "技术主管 Agent", "选择模型、尺寸、采样与生成参数"],
-      ["image-refine", "RF", "图像精修 Agent", "前端 Agent", "修正细节、构图、文字和一致性"],
-      ["image-review", "QA", "成图验收 Agent", "测试 Agent", "检查目标符合度、瑕疵和安全边界"]
-    ]),
-    video: createMediaTemplate("video", "视频", "从脚本到成片交付的可编辑流程", [
-      ["video-script", "SC", "脚本 Agent", "产品经理 Agent", "拆解主题、受众、节奏与叙事结构"],
-      ["video-board", "SB", "分镜 Agent", "架构师 Agent", "规划镜头、时长、转场与素材依赖"],
-      ["video-visual", "VI", "画面 Agent", "前端 Agent", "生成关键帧、视觉素材与风格规范"],
-      ["video-model", "VM", "视频模型 Agent", "技术主管 Agent", "选择视频模型并控制生成参数"],
-      ["video-audio", "AU", "音频 Agent", "后端 Agent", "规划配音、音乐、音效与时间轴"],
-      ["video-edit", "ED", "剪辑 Agent", "前端 Agent", "组织镜头、字幕、转场和成片结构"],
-      ["video-review", "QA", "成片验收 Agent", "测试 Agent", "检查画面、音画同步、瑕疵与安全"]
-    ])
+    image: createMediaTemplate("image", "生图节点工作流", "端口化生图节点、参数与真实生成队列", imageNodes, imageEdges),
+    video: createMediaTemplate("video", "视频节点工作流", "端口化视频节点、运动参数与真实生成队列", videoNodes, videoEdges)
   };
 
   function selectTask(tasks, selectedId) {
@@ -94,7 +121,8 @@
     const byId = {};
     for (const node of template.nodes) {
       let status;
-      if (node.manager) status = managerStatus(task);
+      if (template.id !== "software") status = { state: "idle", detail: node.subtitle };
+      else if (node.manager) status = managerStatus(task);
       else if (node.role) status = roleStatus(task, node.role);
       else status = { state: "idle", detail: "等待任务" };
       const next = { ...node, ...status };
